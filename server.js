@@ -1,0 +1,203 @@
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
+
+// Load a local .env file when present. Never commit it; use .env.example as a guide.
+const envPath = path.join(__dirname, ".env");
+if (fs.existsSync(envPath)) {
+  for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    if (match && !process.env[match[1]])
+      process.env[match[1]] = match[2].replace(/^['"]|['"]$/g, "");
+  }
+}
+
+const files = {
+  "/": "index.html",
+  "/index.html": "index.html",
+  "/styles.css": "styles.css",
+  "/app.js": "app.js",
+};
+const types = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+};
+function send(res, status, payload) {
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(payload));
+}
+function responseText(payload) {
+  return payload.choices?.[0]?.message?.content || "";
+}
+function parseJsonResponse(text) {
+  const cleaned = String(text || "")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  if (!cleaned) throw new Error("The AI returned an empty response.");
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const starts = [cleaned.indexOf("{"), cleaned.indexOf("[")].filter((index) => index >= 0);
+    const start = starts.length ? Math.min(...starts) : -1;
+    const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(cleaned.slice(start, end + 1));
+      } catch {}
+    }
+    throw new Error("The AI returned incomplete JSON. Try fewer words at once.");
+  }
+}
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = "";
+    req.on("data", (chunk) => {
+      raw += chunk;
+      if (raw.length > 100_000) {
+        req.destroy();
+        reject(new Error("Request body is too large"));
+      }
+    });
+    req.on("end", () => resolve(raw));
+    req.on("error", reject);
+  });
+}
+
+const server = http.createServer(async (req, res) => {
+  if (req.method === "GET" && files[req.url]) {
+    const file = path.join(__dirname, files[req.url]);
+    res.writeHead(200, { "Content-Type": types[path.extname(file)] });
+    return fs.createReadStream(file).pipe(res);
+  }
+  if (req.method === "POST" && req.url === "/api/chat") {
+    if (!process.env.GROQ_API_KEY)
+      return send(res, 503, { error: "Study Coach is not configured." });
+    try {
+      const body = JSON.parse(await readBody(req));
+      const messages = Array.isArray(body.messages) ? body.messages : [];
+      const words = Array.isArray(body.words) ? body.words : [];
+      const focusWord = body.focusWord && typeof body.focusWord === "object" ? body.focusWord : null;
+      if (!messages.length || messages.length > 12)
+        return send(res, 400, { error: "Send a conversation with 1 to 12 messages." });
+      const safeMessages = messages
+        .filter((message) => ["user", "assistant"].includes(message.role))
+        .map((message) => ({
+          role: message.role,
+          content: String(message.content || "").slice(0, 2_000),
+        }));
+      const vocabulary = words
+        .slice(0, 50)
+        .map((word) => `${word.term} — ${word.meaning || "meaning unknown"}`)
+        .join("\\n");
+      const api = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: process.env.GROQ_CHAT_MODEL || "openai/gpt-oss-20b",
+          temperature: 0.5,
+          messages: [
+            {
+              role: "system",
+              content: `You are Hanji's warm, precise Chinese language Study Coach. Help the learner practice their saved words. Give short explanations, corrections, examples, and mini exercises. Prefer Chinese examples with English explanations. Do not invent saved vocabulary. ${focusWord ? `Focus closely on this word: ${JSON.stringify(focusWord)}. Explain its exact meaning, part of speech, register, common collocations, grammar patterns, pronunciation, and natural examples. Correct misconceptions directly.` : ""} Saved vocabulary:\\n${vocabulary || "No words saved yet."}`,
+            },
+            ...safeMessages,
+          ],
+        }),
+      });
+      if (!api.ok)
+        return send(res, api.status, { error: "The Study Coach request failed.", detail: await api.text() });
+      const message = responseText(await api.json());
+      if (!message) throw new Error("The Study Coach returned an empty response");
+      return send(res, 200, { message });
+    } catch (error) {
+      return send(res, 500, { error: "Could not reach the Study Coach.", detail: error.message });
+    }
+  }
+  if (req.method !== "POST" || req.url !== "/api/enrich")
+    return send(res, 404, { error: "Not found" });
+  if (!process.env.GROQ_API_KEY)
+    return send(res, 503, { error: "AI enrichment is not configured." });
+  let raw = "";
+  req.on("data", (chunk) => {
+    raw += chunk;
+    if (raw.length > 100_000) req.destroy();
+  });
+  req.on("end", async () => {
+    try {
+      const terms = JSON.parse(raw).terms;
+      if (!Array.isArray(terms) || !terms.length || terms.length > 50)
+        return send(res, 400, { error: "Send 1 to 50 words." });
+      const prompt = `You are a meticulous Chinese-English lexicographer. Analyze every supplied term carefully before answering. Return a JSON object with an items array, one item per input in the same order. Each item must have exactly: {"term":"original input","meaning":"accurate concise English definition","pinyin":"standard tone-marked Hanyu Pinyin with spaces between syllables; empty only when the term is not Chinese","partOfSpeech":"noun, verb, adjective, phrase, etc.","sentences":{"beginner":["short natural Chinese sentence containing the exact term"],"intermediate":["natural Chinese sentence containing the exact term"],"advanced":["natural sophisticated Chinese sentence containing the exact term"]}}. Preserve the exact Chinese term in every Chinese sentence. Check polysemy and choose the most common learner-relevant meaning; mention a second common meaning briefly when necessary. Do not translate word-for-word if it produces unnatural English. Do not put English inside Chinese example sentences. Terms: ${JSON.stringify(terms)}`;
+      const fallbackModel = process.env.GROQ_CHAT_MODEL || "openai/gpt-oss-20b";
+      const configuredModel = process.env.GROQ_ENRICH_MODEL || "openai/gpt-oss-20b";
+      const selectedModel = /prompt-guard|safeguard/i.test(configuredModel) ? fallbackModel : configuredModel;
+      let api = await fetch(
+        "https://api.groq.com/openai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: selectedModel,
+            messages: [
+              {
+                role: "system",
+                content: "Return valid JSON only. Never guess pinyin tones; use standard Hanyu Pinyin and verify each syllable.",
+              },
+              { role: "user", content: prompt },
+            ],
+            temperature: 0.1,
+            max_completion_tokens: 4_000,
+          }),
+        },
+      );
+      if (!api.ok && selectedModel !== fallbackModel && [400, 404, 422].includes(api.status)) {
+        await api.text();
+        api = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: fallbackModel,
+            messages: [
+              { role: "system", content: "Return valid JSON only. Never guess pinyin tones; use standard Hanyu Pinyin and verify each syllable." },
+              { role: "user", content: prompt },
+            ],
+            temperature: 0.1,
+            max_completion_tokens: 4_000,
+          }),
+        });
+      }
+      if (!api.ok)
+        return send(res, api.status, {
+          error: "The AI request failed.",
+          detail: await api.text(),
+        });
+      const text = responseText(await api.json()).replace(
+        /^```json\s*|\s*```$/g,
+        "",
+      );
+      const parsed = parseJsonResponse(text);
+      const items = Array.isArray(parsed) ? parsed : parsed.items;
+      if (!Array.isArray(items)) throw new Error("AI response did not include an items array");
+      return send(res, 200, { items });
+    } catch (error) {
+      return send(res, 500, {
+        error: "Could not create AI study data.",
+        detail: error.message,
+      });
+    }
+  });
+});
+server.listen(process.env.PORT || 3000, () =>
+  console.log("Hanji is running at http://localhost:3000"),
+);

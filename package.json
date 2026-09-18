@@ -1,0 +1,5 @@
+{
+  "name": "hanji-vocabulary-studio",
+  "private": true,
+  "scripts": { "start": "node server.js" }
+}
