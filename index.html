@@ -3,8 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#F2F0E8" />
     <title>Hanji · Vocabulary studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600;700&display=swap"
@@ -13,7 +15,7 @@
     <link rel="stylesheet" href="styles.css" />
     <style>
       .dialog-intro {
-        color: #777b71;
+        color: #918B76;
         line-height: 1.5;
         margin: 10px 0 0;
       }
@@ -22,7 +24,7 @@
         line-height: 1.65;
       }
       .input-hint {
-        color: #888b83;
+        color: #918B76;
         font-size: 12px;
         margin: 7px 0 0;
       }
@@ -30,7 +32,7 @@
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        color: #65685f;
+        color: #626C66;
         font-size: 13px;
         font-weight: 600;
         white-space: nowrap;
@@ -44,7 +46,7 @@
       .toggle-track {
         width: 34px;
         height: 20px;
-        background: #cfcfc7;
+        background: #ACA885;
         border-radius: 999px;
         padding: 3px;
         transition: 0.18s;
@@ -54,12 +56,12 @@
         width: 14px;
         height: 14px;
         border-radius: 50%;
-        background: #fff;
+        background: #FBF8EF;
         transition: 0.18s;
         box-shadow: 0 1px 2px #0002;
       }
       .pinyin-toggle input:checked + .toggle-track {
-        background: #53735d;
+        background: #626C66;
       }
       .pinyin-toggle input:checked + .toggle-track .toggle-knob {
         transform: translateX(14px);
@@ -68,36 +70,36 @@
         display: none;
       }
       .reverse-description {
-        color: #777b71;
+        color: #918B76;
         margin: 14px 0 0;
         line-height: 1.5;
       }
       .quiz-panel {
         margin-top: 20px;
         padding: 28px;
-        border: 1px solid #e8e4dc;
+        border: 1px solid #D8D0BA;
         border-radius: 13px;
-        background: #fffefb;
+        background: #FBF8EF;
       }
       .quiz-sentence {
         margin: 14px 0 25px;
         font-family: "Noto Serif SC", serif;
         font-size: 22px;
         line-height: 2;
-        color: #292c26;
+        color: #434A42;
       }
       .quiz-blank {
         display: inline-block;
         min-width: 92px;
-        border-bottom: 2px solid #53735d;
-        color: #53735d;
+        border-bottom: 2px solid #626C66;
+        color: #626C66;
         text-align: center;
         letter-spacing: 2px;
       }
       .quiz-answer-label {
         display: block;
         font-size: 12px;
-        color: #64675f;
+        color: #626C66;
         font-weight: 700;
         letter-spacing: 0.5px;
       }
@@ -113,12 +115,21 @@
       .quiz-feedback {
         min-height: 20px;
         margin: 13px 0 0;
-        color: #53735d;
+        color: #626C66;
         font-weight: 600;
         font-size: 13px;
       }
       .quiz-feedback.incorrect {
-        color: #af6345;
+        color: #626C66;
+      }
+      .study-heading-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .study-heading-actions .outline-btn {
+        padding: 8px 12px;
+        font-size: 12px;
       }
       .quiz-controls {
         display: flex;
@@ -126,12 +137,70 @@
         gap: 8px;
       }
       .quiz-controls label {
-        color: #777b71;
+        color: #918B76;
         font-size: 12px;
         font-weight: 600;
       }
       .quiz-controls select {
         height: 34px;
+      }
+      .quiz-pinyin {
+        margin: -15px 0 23px;
+        color: #626C66;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.15px;
+      }
+      .reader-panel {
+        margin-top: 20px;
+        padding: 28px;
+        border: 1px solid #D8D0BA;
+        border-radius: 13px;
+        background: #FBF8EF;
+      }
+      .reader-input {
+        min-height: 150px;
+        margin-top: 10px;
+        font-family: "Noto Serif SC", serif;
+        font-size: 19px;
+        line-height: 1.7;
+      }
+      .reader-output {
+        min-height: 170px;
+        margin-top: 20px;
+        padding: 24px;
+        border: 1px solid #D8D0BA;
+        border-radius: 10px;
+        background: #F5F1E5;
+        font-family: "Noto Serif SC", serif;
+        font-size: 25px;
+        line-height: 2.2;
+        overflow-wrap: anywhere;
+      }
+      .reader-output:empty::before {
+        content: "Your pinyin transcription will appear here…";
+        color: #ACA885;
+        font-family: "DM Sans", sans-serif;
+        font-size: 14px;
+      }
+      .reader-output ruby {
+        margin: 0 2px;
+      }
+      .reader-output rt {
+        color: #626C66;
+        font-family: "DM Sans", sans-serif;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1;
+      }
+      @media (max-width: 520px) {
+        .reader-panel {
+          padding: 20px;
+        }
+        .reader-output {
+          padding: 18px;
+          font-size: 21px;
+        }
       }
       @media (max-width: 520px) {
         .quiz-panel {
@@ -151,55 +220,70 @@
     </style>
   </head>
   <body>
+    <a class="skip-link" href="#top">Skip to content</a>
     <main class="app-shell">
-      <aside class="sidebar">
+      <aside class="sidebar" aria-label="Hanji navigation and daily goal">
         <a class="brand" href="#top"
           ><span class="brand-mark">字</span><span>hanji</span></a
         >
         <nav aria-label="Primary navigation">
-          <a class="nav-link active" href="#library"
-            ><span>▦</span> My vocabulary</a
-          >
-          <a class="nav-link" href="#study"><span>▱</span> Study cards</a>
-          <a class="nav-link" href="#reverse-study"
-            ><span>↔</span> Reverse recall</a
-          >
-          <a class="nav-link" href="#context-quiz"
-            ><span>✎</span> Context quiz</a
-          >
-          <a class="nav-link" href="#study-coach"
-            ><span>✦</span> Study Coach</a
-          >
+          <div class="nav-group is-open">
+            <button class="nav-group-label" type="button" aria-expanded="true" aria-controls="nav-library-links">Library</button>
+            <div class="nav-group-panel" id="nav-library-links">
+              <div class="nav-group-links">
+                <a class="nav-link active" href="#library"><span aria-hidden="true">▦</span> My vocabulary</a>
+              </div>
+            </div>
+          </div>
+          <div class="nav-group is-open">
+            <button class="nav-group-label" type="button" aria-expanded="true" aria-controls="nav-study-links">Study tools</button>
+            <div class="nav-group-panel" id="nav-study-links">
+              <div class="nav-group-links">
+                <a class="nav-link" href="#study"><span aria-hidden="true">▱</span> Study cards</a>
+                <a class="nav-link" href="#reverse-study"><span aria-hidden="true">↔</span> Reverse recall</a>
+                <a class="nav-link" href="#context-quiz"><span aria-hidden="true">✎</span> Context quiz</a>
+                <a class="nav-link" href="#study-levels"><span aria-hidden="true">▤</span> Study levels</a>
+              </div>
+            </div>
+          </div>
+          <div class="nav-group is-open">
+            <button class="nav-group-label" type="button" aria-expanded="true" aria-controls="nav-utility-links">Utilities</button>
+            <div class="nav-group-panel" id="nav-utility-links">
+              <div class="nav-group-links">
+                <a class="nav-link" href="#pinyin-reader"><span aria-hidden="true">拼</span> Pinyin reader</a>
+                <a class="nav-link" href="#study-coach"><span aria-hidden="true">✦</span> Study Coach</a>
+              </div>
+            </div>
+          </div>
         </nav>
         <div class="sidebar-note">
           <span class="dot"></span
           ><span>Your words are saved privately<br />on this device.</span>
         </div>
         <div class="sidebar-progress" aria-label="Daily learning goal">
-          <div class="sidebar-progress-top"><span>DAILY GOAL</span><strong id="goal-label">0 / 5 XP</strong></div>
+          <div class="sidebar-progress-top"><span>Daily goal</span><strong id="goal-label">0 / 5 XP</strong></div>
           <div class="mini-progress"><span id="goal-progress"></span></div>
           <p>Keep your learning streak alive.</p>
         </div>
       </aside>
 
-      <section class="content" id="top" data-page="library">
+      <section class="content" id="top" data-page="library" tabindex="-1" aria-label="Hanji vocabulary studio">
         <header>
           <div>
-            <p class="eyebrow" id="page-eyebrow">PERSONAL LANGUAGE STUDIO</p>
+            <p class="eyebrow" id="page-eyebrow">Personal language studio</p>
             <h1 id="page-title">Words worth keeping.</h1>
           </div>
-          <button class="primary-btn" id="open-add">
-            <span>＋</span> Add a word
+          <button class="primary-btn" id="open-add" type="button">
+            <span aria-hidden="true">＋</span> Add a word
           </button>
         </header>
 
         <section class="welcome library-page-support" aria-label="Vocabulary summary">
           <div>
-            <p class="eyebrow">YOUR COLLECTION</p>
-            <h2><span id="word-count">0</span> words, ready when you are.</h2>
+            <p class="eyebrow">Your collection</p>
+            <h2><span id="word-count">0</span> words ready to revisit.</h2>
             <p>
-              Build a thoughtful library, then turn it into a study session in
-              one click.
+              Your saved vocabulary, organized for a focused study session.
             </p>
           </div>
           <div class="progress-ring">
@@ -209,9 +293,9 @@
         </section>
 
         <section class="stats-grid library-page-support" aria-label="Learning progress">
-          <article class="stat-card stat-streak"><span class="stat-icon">✦</span><div><strong id="streak-count">0</strong><small>day streak</small></div><span class="stat-trend">+1 today</span></article>
-          <article class="stat-card stat-xp"><span class="stat-icon">◆</span><div><strong id="xp-count">0</strong><small>total XP</small></div><span class="stat-trend">Level <b id="level-count">1</b></span></article>
-          <article class="stat-card stat-review"><span class="stat-icon">◌</span><div><strong id="review-count">0</strong><small>to review</small></div><span class="stat-trend">Ready now</span></article>
+          <article class="stat-card stat-streak"><span class="stat-icon" aria-hidden="true">✦</span><div><strong id="streak-count">0</strong><small>day streak</small></div></article>
+          <article class="stat-card stat-xp"><span class="stat-icon" aria-hidden="true">◆</span><div><strong id="xp-count">0</strong><small>total XP · level <span id="level-count">1</span></small></div></article>
+          <article class="stat-card stat-review"><span class="stat-icon" aria-hidden="true">◌</span><div><strong id="review-count">0</strong><small>to review</small></div></article>
         </section>
 
         <section id="library" class="library-section page-view">
@@ -224,13 +308,29 @@
               Clear search
             </button>
           </div>
+          <div class="folder-header">
+            <div>
+              <h3>Your folders</h3>
+              <p>Keep each unit or topic in its own word group.</p>
+            </div>
+            <button class="outline-btn" id="new-folder-btn" type="button">＋ New folder</button>
+          </div>
+          <form id="folder-form" class="folder-create-form" hidden>
+            <label for="folder-name">Folder name</label>
+            <input id="folder-name" name="folder-name" maxlength="40" placeholder="e.g. Unit 1 · Greetings" required />
+            <button class="primary-btn" type="submit">Create folder</button>
+            <button class="text-btn" id="cancel-folder-btn" type="button">Cancel</button>
+          </form>
+          <div id="folder-list" class="folder-list" aria-label="Vocabulary folders"></div>
           <div class="toolbar">
             <label class="search"
               ><span>⌕</span
               ><input
                 id="search-input"
+                name="search"
                 autocomplete="off"
-                placeholder="Search your words"
+                aria-label="Search your vocabulary"
+                placeholder="Search your words…"
             /></label>
             <label
               class="pinyin-toggle"
@@ -255,6 +355,11 @@
             </select>
           </div>
           <div id="word-list" class="word-list"></div>
+          <div id="folder-empty" class="folder-empty" hidden>
+            <span aria-hidden="true">▱</span>
+            <div><strong>This folder is empty.</strong><p>Add a new word list directly to this folder.</p></div>
+            <button class="outline-btn" id="folder-add" type="button">＋ Add words</button>
+          </div>
           <div id="empty-state" class="empty-state">
             <div class="empty-glyph">文</div>
             <h3>Your library is waiting.</h3>
@@ -271,24 +376,27 @@
         <section id="word-detail" class="study-section word-detail-section page-view">
           <button id="back-to-library" class="back-link" type="button">← Back to vocabulary</button>
           <div class="word-detail-hero">
-            <div><p class="eyebrow">WORD STUDY ROOM</p><h2 id="detail-term">—</h2><p id="detail-pinyin" class="detail-pinyin">Pinyin not saved yet</p><span id="detail-part-of-speech" class="detail-chip">WORD</span></div>
+            <div><p class="eyebrow">Word study room</p><h2 id="detail-term">—</h2><p id="detail-pinyin" class="detail-pinyin">Pinyin not saved yet</p><span id="detail-part-of-speech" class="detail-chip">WORD</span></div>
             <button id="detail-regenerate" class="outline-btn" type="button">✦ Refresh AI data</button>
           </div>
           <div class="detail-grid">
-            <article class="detail-panel meaning-panel"><span class="panel-label">MEANING</span><h3 id="detail-meaning">—</h3><p id="detail-note"></p></article>
-            <article class="detail-panel"><span class="panel-label">LEARN THIS WORD</span><div id="detail-tips" class="detail-tips"></div></article>
+            <article class="detail-panel meaning-panel"><span class="panel-label">Meaning</span><h3 id="detail-meaning">—</h3><p id="detail-note"></p></article>
+            <article class="detail-panel"><span class="panel-label">Learn this word</span><div id="detail-tips" class="detail-tips"></div></article>
           </div>
-          <article class="detail-panel examples-panel"><div class="panel-heading"><span class="panel-label">CONTEXT LADDER</span><span class="detail-muted">Beginner → Advanced</span></div><div id="detail-examples" class="detail-examples"></div></article>
-          <article class="detail-panel word-chat-panel"><div class="panel-heading"><div><span class="panel-label">YOUR AI TUTOR</span><h3>Ask anything about this word</h3></div><span class="coach-avatar small-avatar">✦</span></div><div id="word-chat-messages" class="chat-messages word-chat-messages" aria-live="polite"></div><form id="word-chat-form" class="chat-form"><input id="word-chat-input" autocomplete="off" placeholder="How do I use this word naturally?" aria-label="Ask about this word" required /><button class="primary-btn" type="submit" aria-label="Send word question">↑</button></form></article>
+          <article class="detail-panel examples-panel"><div class="panel-heading"><span class="panel-label">Context ladder</span><span class="detail-muted">Beginner → Advanced</span></div><div id="detail-examples" class="detail-examples"></div></article>
+          <article class="detail-panel word-chat-panel"><div class="panel-heading"><div><span class="panel-label">Your AI tutor</span><h3>Ask anything about this word</h3></div><span class="coach-avatar small-avatar" aria-hidden="true">✦</span></div><div id="word-chat-messages" class="chat-messages word-chat-messages" aria-live="polite"></div><form id="word-chat-form" class="chat-form"><input id="word-chat-input" name="question" autocomplete="off" placeholder="How do I use this word naturally?" aria-label="Ask about this word" required /><button class="primary-btn" type="submit" aria-label="Send word question">↑</button></form></article>
         </section>
 
         <section id="study" class="study-section page-view">
           <div class="section-title">
             <div>
-              <p class="eyebrow">A QUIET MOMENT TO PRACTICE</p>
+              <p class="eyebrow">A quiet moment to practice</p>
               <h2>Study cards</h2>
             </div>
-            <span class="study-counter" id="study-count"></span>
+            <div class="study-heading-actions">
+              <button class="outline-btn" id="shuffle-btn" type="button">⤨ Shuffle</button>
+              <span class="study-counter" id="study-count"></span>
+            </div>
           </div>
           <div id="study-empty" class="study-empty">
             Add a few words above and your review deck will appear here.
@@ -296,17 +404,18 @@
           <div id="flashcard-area" hidden>
             <button id="flashcard" class="flashcard" aria-label="Flip card">
               <div class="card-face card-front">
-                <p class="card-label">TAP TO REVEAL</p>
+                <p class="card-label">Tap to reveal</p>
                 <strong id="card-term"></strong
                 ><span id="card-pronunciation"></span>
               </div>
               <div class="card-face card-back">
-                <p class="card-label">MEANING</p>
+                <p class="card-label">Meaning</p>
                 <strong id="card-meaning"></strong><span id="card-note"></span>
               </div>
             </button>
             <div class="study-actions">
               <button class="outline-btn" id="again-btn">↻ Again</button
+              ><button class="outline-btn learning-btn" id="learning-btn">Still learning</button
               ><button class="known-btn" id="known-btn">
                 I knew this <span>→</span>
               </button>
@@ -317,10 +426,13 @@
         <section id="reverse-study" class="study-section page-view">
           <div class="section-title">
             <div>
-              <p class="eyebrow">RECALL FROM THE CLUE</p>
+              <p class="eyebrow">Recall from the clue</p>
               <h2>Reverse recall</h2>
             </div>
-            <span class="study-counter" id="reverse-count"></span>
+            <div class="study-heading-actions">
+              <button class="outline-btn" id="reverse-shuffle-btn" type="button">⤨ Shuffle</button>
+              <span class="study-counter" id="reverse-count"></span>
+            </div>
           </div>
           <p class="reverse-description">
             See the meaning and pinyin first, then recall the Chinese word
@@ -336,18 +448,19 @@
               aria-label="Reveal Chinese word"
             >
               <div class="card-face card-front">
-                <p class="card-label">WHAT IS THE CHINESE WORD?</p>
+                <p class="card-label">What is the Chinese word?</p>
                 <strong id="reverse-meaning"></strong
                 ><span id="reverse-pronunciation"></span>
               </div>
               <div class="card-face card-back">
-                <p class="card-label">THE WORD</p>
+                <p class="card-label">The word</p>
                 <strong id="reverse-term"></strong
                 ><span id="reverse-note"></span>
               </div>
             </button>
             <div class="study-actions">
               <button class="outline-btn" id="reverse-again-btn">↻ Again</button
+              ><button class="outline-btn learning-btn" id="reverse-learning-btn">Still learning</button
               ><button class="known-btn" id="reverse-known-btn">
                 I knew this <span>→</span>
               </button>
@@ -358,7 +471,7 @@
         <section id="context-quiz" class="study-section page-view">
           <div class="section-title">
             <div>
-              <p class="eyebrow">READ THE CONTEXT, FIND THE WORD</p>
+              <p class="eyebrow">Read the context, find the word</p>
               <h2>Context quiz</h2>
             </div>
             <div class="quiz-controls">
@@ -367,6 +480,14 @@
                 <option value="beginner">Beginner</option>
                 <option value="intermediate" selected>Intermediate</option>
                 <option value="advanced">Advanced</option></select
+              ><label
+                class="pinyin-toggle"
+                title="Show or hide pinyin for the quiz sentence"
+                ><span>Pinyin</span
+                ><input id="quiz-pinyin-toggle" type="checkbox" checked /><span
+                  class="toggle-track"
+                  ><span class="toggle-knob"></span></span
+              ></label
               ><span class="study-counter" id="quiz-count"></span>
             </div>
           </div>
@@ -378,17 +499,20 @@
             Add a few words above and your contextual quizzes will appear here.
           </div>
           <div id="quiz-area" class="quiz-panel" hidden>
-            <p class="card-label">FILL IN THE BLANK</p>
+            <p class="card-label">Fill in the blank</p>
             <p id="quiz-sentence" class="quiz-sentence"></p>
-            <label class="quiz-answer-label" for="quiz-answer"
-              >Your answer</label
+            <p id="quiz-pinyin" class="quiz-pinyin" aria-live="polite"></p>
+            <label class="quiz-answer-label" for="quiz-answer">Your answer</label
             >
             <div class="quiz-answer-row">
               <input
                 id="quiz-answer"
                 autocomplete="off"
                 lang="zh-CN"
-                placeholder="Type the Chinese word"
+                aria-label="Your Chinese answer"
+                name="answer"
+                inputmode="text"
+                placeholder="Type the Chinese word…"
               /><button id="check-answer-btn" class="primary-btn">
                 Check answer
               </button>
@@ -406,17 +530,60 @@
           </div>
         </section>
 
+        <section id="pinyin-reader" class="study-section page-view">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Characters into sound</p>
+              <h2>Pinyin reader</h2>
+            </div>
+          </div>
+          <p class="reverse-description">
+            Paste Chinese text below to see tone-marked pinyin above every character.
+          </p>
+          <div class="reader-panel">
+            <label class="quiz-answer-label" for="pinyin-reader-input">Chinese text</label>
+            <textarea
+              id="pinyin-reader-input"
+              name="chinese-text"
+              class="reader-input"
+              lang="zh-CN"
+              placeholder="Paste Chinese characters here…"
+              autocomplete="off"
+              spellcheck="false"
+            ></textarea>
+            <div
+              id="pinyin-reader-output"
+              class="reader-output"
+              aria-live="polite"
+              aria-label="Pinyin transcription"
+            ></div>
+          </div>
+        </section>
+
+        <section id="study-levels" class="study-section page-view">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Sort your review deck</p>
+              <h2>Study levels</h2>
+            </div>
+          </div>
+          <p class="reverse-description">
+            Move cards between levels as your recall improves, then focus your study time where it matters most.
+          </p>
+          <div id="study-level-list" class="level-board"></div>
+        </section>
+
         <section id="study-coach" class="study-section coach-section page-view">
           <div class="section-title">
             <div>
-              <p class="eyebrow">YOUR PERSONAL PRACTICE PARTNER</p>
+              <p class="eyebrow">Your personal practice partner</p>
               <h2>Study Coach</h2>
             </div>
             <button id="clear-chat-btn" class="text-btn" type="button">Clear chat</button>
           </div>
           <p class="reverse-description">Ask for a quiz, a correction, or a memorable way to use one of your saved words.</p>
           <div class="coach-shell">
-            <div class="coach-header"><span class="coach-avatar">✦</span><div><strong>Hanji Coach</strong><span><i></i> Online · knows your vocabulary</span></div><span class="coach-context"><b id="coach-word-count">0</b> words in context</span></div>
+            <div class="coach-header"><span class="coach-avatar" aria-hidden="true">✦</span><div><strong>Hanji Coach</strong><span><i></i> Online · knows your vocabulary</span></div><span class="coach-context"><b id="coach-word-count">0</b> words in context</span></div>
             <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
             <div class="quick-prompts" aria-label="Suggested prompts">
               <button type="button" data-prompt="Quiz me on my saved words, one at a time.">Quiz me</button>
@@ -424,7 +591,7 @@
               <button type="button" data-prompt="Give me a short dialogue using three of my saved words.">Make a dialogue</button>
             </div>
             <form id="chat-form" class="chat-form">
-              <input id="chat-input" autocomplete="off" placeholder="Ask your Study Coach anything…" aria-label="Message Study Coach" required />
+              <input id="chat-input" name="message" autocomplete="off" placeholder="Ask your Study Coach anything…" aria-label="Message Study Coach" required />
               <button class="primary-btn" type="submit" aria-label="Send message">↑</button>
             </form>
             <p class="coach-disclaimer">Coach responses are generated from your current vocabulary deck.</p>
@@ -437,7 +604,7 @@
       <form id="word-form" method="dialog">
         <div class="dialog-top">
           <div>
-            <p class="eyebrow">BUILD YOUR DECK</p>
+            <p class="eyebrow">Build your deck</p>
             <h2>Add vocabulary</h2>
           </div>
           <button
@@ -453,6 +620,8 @@
           Paste or type one word per line. We’ll look up the meanings and make
           cards for each word.
         </p>
+        <label for="add-folder-select">Save this group in</label>
+        <select id="add-folder-select" name="folder" class="dialog-folder-select" aria-label="Folder for these words"></select>
         <label
           >Words to add
           <textarea
@@ -467,7 +636,7 @@
         <p class="input-hint">
           Chinese and English are supported. Empty lines are ignored.
         </p>
-        <div class="ai-callout"><span class="ai-spark">✦</span><div><strong>AI enrichment</strong><span>Meaning, pronunciation, and three context levels.</span></div><span class="ai-live"><i></i> READY</span></div>
+        <div class="ai-callout"><span class="ai-spark" aria-hidden="true">✦</span><div><strong>AI enrichment</strong><span>Meaning, pronunciation, and three context levels.</span></div><span class="ai-live"><i></i> READY</span></div>
         <div class="lookup-row">
           <span id="lookup-status" aria-live="polite"></span>
           <progress id="lookup-progress" max="100" value="0" hidden></progress>
@@ -488,17 +657,20 @@
           <p class="pronunciation"></p>
           <p class="meaning"></p>
           <p class="note"></p>
+          <span class="word-folder-label"></span>
           <span class="ai-card-badge" hidden>✦ AI enriched</span>
         </div>
         <div class="word-side">
-          <button class="open-word-btn" title="Open word study room">↗</button
-          ><button class="regenerate-btn" title="Regenerate AI study data">✦</button
-          ><button class="status-btn" title="Mark as confident"></button
-          ><button class="delete-btn" title="Remove word">×</button>
+          <select class="move-folder-select" aria-label="Move word to folder" title="Move word to folder"></select>
+          <button class="open-word-btn" title="Open word study room" aria-label="Open word study room">↗</button
+          ><button class="regenerate-btn" title="Regenerate AI study data" aria-label="Refresh word study data">✦</button
+          ><button class="status-btn" title="Mark as confident" aria-label="Toggle confidence"></button
+          ><button class="delete-btn" title="Remove word" aria-label="Remove word">×</button>
         </div>
       </article></template
     >
     <script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.18.2/dist/index.js"></script>
     <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
     <script src="app.js"></script>
   </body>

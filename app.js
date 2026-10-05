@@ -1,5 +1,7 @@
 const $ = (s) => document.querySelector(s);
 const libraryKey = "hanji-vocabulary-v1";
+const folderStorageKey = "hanji-vocabulary-folders-v1";
+const unsortedFolderId = "unsorted";
 const pinyinPreferenceKey = "hanji-show-pinyin";
 const scriptPreferenceKey = "hanji-traditional-script";
 const statsKey = "hanji-learning-stats-v1";
@@ -48,6 +50,16 @@ const localTerms = {
   温柔: ["wēnróu", "gentle; tender"],
 };
 let words = JSON.parse(localStorage.getItem(libraryKey) || "null") || defaults;
+let folders = JSON.parse(localStorage.getItem(folderStorageKey) || "null") || [
+  { id: unsortedFolderId, name: "Unsorted" },
+];
+if (!folders.some((folder) => folder.id === unsortedFolderId)) {
+  folders.unshift({ id: unsortedFolderId, name: "Unsorted" });
+}
+words.forEach((word) => {
+  if (!folders.some((folder) => folder.id === word.folderId)) word.folderId = unsortedFolderId;
+});
+let selectedFolderId = "all";
 const aiCacheKey = "hanji-ai-enrichment-cache-v2";
 let aiCache = JSON.parse(localStorage.getItem(aiCacheKey) || "{}") || {};
 function termKey(term) {
@@ -56,11 +68,21 @@ function termKey(term) {
 function saveAiCache() {
   localStorage.setItem(aiCacheKey, JSON.stringify(aiCache));
 }
+function studyLevel(word) {
+  return word.studyLevel || (word.known ? "known" : "new");
+}
+function setStudyLevel(word, level) {
+  word.studyLevel = level;
+  word.known = level === "known";
+}
 let cardIndex = 0;
+let cardDeck = [];
+let activeStudyLevel = "all";
 let quizIndex = 0;
 let quizVariant = 0;
 let quizLevel = "intermediate";
 let showPinyin = localStorage.getItem(pinyinPreferenceKey) !== "false";
+let quizShowPinyin = showPinyin;
 let useTraditional = localStorage.getItem(scriptPreferenceKey) === "true";
 let stats = JSON.parse(localStorage.getItem(statsKey) || "null") || {
   xp: 0,
@@ -308,6 +330,27 @@ const fallbackSimplified = Object.fromEntries(
     simple,
   ]),
 );
+function localPinyin(value) {
+  if (!/[\u3400-\u9fff]/.test(value) || !globalThis.pinyinPro?.pinyin) return "";
+  return globalThis.pinyinPro.pinyin(value, { toneType: "symbol" });
+}
+function renderPinyinReader() {
+  const input = $("#pinyin-reader-input"), output = $("#pinyin-reader-output");
+  if (!input || !output) return;
+  const text = input.value;
+  if (!text.trim() || !globalThis.pinyinPro?.html) {
+    output.replaceChildren();
+    return;
+  }
+  output.innerHTML = text
+    .split(/([\u3400-\u9fff]+)/)
+    .map((part) =>
+      /[\u3400-\u9fff]/.test(part)
+        ? globalThis.pinyinPro.html(part, { toneType: "symbol" })
+        : escapeHtml(part),
+    )
+    .join("");
+}
 function displayChinese(value) {
   try {
     if (globalThis.OpenCC) {
@@ -450,6 +493,65 @@ const advancedQuizExamples = {
 function save() {
   localStorage.setItem(libraryKey, JSON.stringify(words));
 }
+function saveFolders() {
+  localStorage.setItem(folderStorageKey, JSON.stringify(folders));
+}
+function folderName(folderId) {
+  return folders.find((folder) => folder.id === folderId)?.name || "Unsorted";
+}
+function renderFolderControls() {
+  const folderList = $("#folder-list");
+  folderList.replaceChildren();
+  const folderButtons = [
+    { id: "all", name: "All words", count: words.length },
+    ...folders.map((folder) => ({
+      ...folder,
+      count: words.filter((word) => word.folderId === folder.id).length,
+    })),
+  ];
+  folderButtons.forEach((folder) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "folder-card";
+    button.classList.toggle("is-selected", selectedFolderId === folder.id);
+    button.setAttribute("aria-pressed", String(selectedFolderId === folder.id));
+    button.innerHTML = `<span class="folder-card-icon" aria-hidden="true">${folder.id === "all" ? "▦" : "▱"}</span><span class="folder-card-copy"><strong>${escapeHtml(folder.name)}</strong><small>${folder.count} ${folder.count === 1 ? "word" : "words"}</small></span>`;
+    button.onclick = () => {
+      selectedFolderId = folder.id;
+      render();
+    };
+    folderList.append(button);
+  });
+
+  const addFolderSelect = $("#add-folder-select");
+  const moveFolderOptions = `<option value="">Move to folder…</option>${folders
+    .map((folder) => `<option value="${escapeHtml(folder.id)}">${escapeHtml(folder.name)}</option>`)
+    .join("")}`;
+  const previousAddFolderId = addFolderSelect.value;
+  addFolderSelect.innerHTML = folders
+    .map((folder) => `<option value="${escapeHtml(folder.id)}">${escapeHtml(folder.name)}</option>`)
+    .join("");
+  const nextAddFolderId = selectedFolderId !== "all"
+    ? selectedFolderId
+    : previousAddFolderId;
+  if (folders.some((folder) => folder.id === nextAddFolderId)) {
+    addFolderSelect.value = nextAddFolderId;
+  }
+  document.querySelectorAll(".move-folder-select").forEach((select) => {
+    const currentFolderId = select.dataset.folderId;
+    select.innerHTML = moveFolderOptions;
+    select.value = "";
+    select.onchange = () => {
+      const word = words.find((item) => item.id === select.dataset.wordId);
+      if (!word || !select.value || select.value === word.folderId) return;
+      word.folderId = select.value;
+      save();
+      render();
+      showToast(`Moved to ${folderName(word.folderId)}.`);
+    };
+    select.title = `In ${folderName(currentFolderId)}`;
+  });
+}
 function escapeHtml(value) {
   const div = document.createElement("div");
   div.textContent = value;
@@ -459,7 +561,10 @@ function render() {
   renderStats();
   const query = $("#search-input").value.trim().toLowerCase(),
     filter = $("#filter-select").value;
-  const shown = words.filter(
+  const folderWords = selectedFolderId === "all"
+    ? words
+    : words.filter((word) => word.folderId === selectedFolderId);
+  const shown = folderWords.filter(
     (w) =>
       (!query ||
         [w.term, w.meaning, w.pronunciation, w.note]
@@ -483,26 +588,39 @@ function render() {
     const note = node.querySelector(".note");
     if (word.note) note.textContent = word.note;
     else note.remove();
+    node.querySelector(".word-folder-label").textContent = folderName(word.folderId);
+    const moveFolderSelect = node.querySelector(".move-folder-select");
+    moveFolderSelect.dataset.wordId = word.id;
+    moveFolderSelect.dataset.folderId = word.folderId;
     const aiBadge = node.querySelector(".ai-card-badge");
     if (word.sentences) aiBadge.hidden = false;
-    node.querySelector(".open-word-btn").onclick = () => {
+    const openWordButton = node.querySelector(".open-word-btn");
+    openWordButton.setAttribute("aria-label", `Open study room for ${word.term}`);
+    openWordButton.onclick = () => {
       location.hash = `word-${encodeURIComponent(word.id)}`;
     };
     const status = node.querySelector(".status-btn");
     status.classList.toggle("is-known", word.known);
     status.title = word.known ? "Mark for review" : "Mark as confident";
+    status.setAttribute("aria-label", word.known ? `Mark ${word.term} for review` : `Mark ${word.term} as confident`);
+    status.setAttribute("aria-pressed", String(word.known));
     status.onclick = () => {
-      word.known = !word.known;
+      setStudyLevel(word, word.known ? "new" : "known");
+      status.setAttribute("aria-pressed", String(word.known));
       save();
       render();
     };
-    node.querySelector(".delete-btn").onclick = () => {
+    const deleteButton = node.querySelector(".delete-btn");
+    deleteButton.setAttribute("aria-label", `Remove ${word.term}`);
+    deleteButton.onclick = () => {
       words = words.filter((w) => w.id !== word.id);
       save();
       cardIndex = 0;
       render();
     };
-    node.querySelector(".regenerate-btn").onclick = async () => {
+    const regenerateButton = node.querySelector(".regenerate-btn");
+    regenerateButton.setAttribute("aria-label", `Refresh study data for ${word.term}`);
+    regenerateButton.onclick = async () => {
       const button = node.querySelector(".regenerate-btn");
       button.disabled = true;
       button.classList.add("is-loading");
@@ -511,7 +629,7 @@ function render() {
         const [item] = (await enrichWithAI([word.term], true)) || [];
         if (!item?.meaning) throw new Error("No AI result");
         word.meaning = item.meaning;
-        word.pronunciation = item.pinyin || item.pronunciation || "";
+        word.pronunciation = localPinyin(word.term) || item.pinyin || item.pronunciation || "";
         word.partOfSpeech = item.partOfSpeech || word.partOfSpeech || "";
         word.sentences = item.sentences || null;
         save();
@@ -525,7 +643,11 @@ function render() {
     };
     list.append(node);
   });
-  $("#empty-state").hidden = words.length !== 0 || !!query || filter !== "all";
+  $("#empty-state").hidden =
+    selectedFolderId !== "all" || words.length !== 0 || !!query || filter !== "all";
+  $("#folder-empty").hidden =
+    selectedFolderId === "all" || folderWords.length !== 0;
+  renderFolderControls();
   $("#word-count").textContent = words.length;
   const percent = words.length
     ? Math.round((words.filter((w) => w.known).length / words.length) * 100)
@@ -536,12 +658,82 @@ function render() {
   renderCard();
   renderReverseCard();
   renderQuiz();
+  renderStudyLevels();
+}
+function renderStudyLevels() {
+  const board = $("#study-level-list");
+  if (!board) return;
+  const levels = [
+    ["new", "New / review", "Words you have not marked as confident yet."],
+    ["learning", "Still learning", "Words that need another pass, but are starting to stick."],
+    ["known", "Confident", "Words you can recall comfortably."],
+  ];
+  board.replaceChildren();
+  levels.forEach(([level, title, description]) => {
+    const column = document.createElement("article");
+    column.className = `level-column level-${level}`;
+    const items = words.filter((word) => studyLevel(word) === level);
+    column.innerHTML = `<div class="level-column-header"><div><span class="level-kicker">${level === "new" ? "01" : level === "learning" ? "02" : "03"}</span><h3>${title}</h3></div><strong>${items.length}</strong><p>${description}</p><div class="level-review-actions"><button class="level-review-btn" type="button" data-level="${level}" data-mode="study"${items.length ? "" : " disabled"}>Study cards</button><button class="level-review-btn" type="button" data-level="${level}" data-mode="reverse"${items.length ? "" : " disabled"}>Reverse recall</button></div></div>`;
+    const list = document.createElement("div");
+    list.className = "level-word-list";
+    if (!items.length) {
+      list.innerHTML = `<p class="level-empty">Nothing here yet.</p>`;
+    } else {
+      items.forEach((word) => {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "level-word-card";
+        card.title = `Open study room for ${word.term}`;
+        card.innerHTML = `<strong>${escapeHtml(displayChinese(word.term))}</strong><span>${escapeHtml(word.pronunciation || "Pinyin not saved")}</span><p>${escapeHtml(word.meaning || "Meaning not saved")}</p>`;
+        card.onclick = () => {
+          location.hash = `word-${encodeURIComponent(word.id)}`;
+        };
+        list.append(card);
+      });
+    }
+    column.append(list);
+    column.querySelectorAll(".level-review-btn").forEach((button) => {
+      button.onclick = () => {
+        activeStudyLevel = level;
+        cardDeck = [];
+        cardIndex = 0;
+        location.hash = button.dataset.mode === "reverse" ? "reverse-study" : "study";
+        renderCard();
+        renderReverseCard();
+      };
+    });
+    board.append(column);
+  });
+}
+function syncCardDeck() {
+  const eligibleWords = activeStudyLevel === "all"
+    ? words
+    : words.filter((word) => studyLevel(word) === activeStudyLevel);
+  const validIds = new Set(eligibleWords.map((word) => word.id));
+  cardDeck = cardDeck.filter((id) => validIds.has(id));
+  eligibleWords.forEach((word) => {
+    if (!cardDeck.includes(word.id)) cardDeck.push(word.id);
+  });
+}
+function cardAt(index) {
+  return words.find((word) => word.id === cardDeck[index]);
+}
+function shuffleCardDeck() {
+  syncCardDeck();
+  for (let i = cardDeck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [cardDeck[i], cardDeck[j]] = [cardDeck[j], cardDeck[i]];
+  }
+  cardIndex = 0;
+  renderCard();
+  renderReverseCard();
 }
 function renderCard() {
+  syncCardDeck();
   const area = $("#flashcard-area"),
     empty = $("#study-empty"),
     count = $("#study-count");
-  if (!words.length) {
+  if (!cardDeck.length) {
     area.hidden = true;
     empty.hidden = false;
     count.textContent = "";
@@ -549,8 +741,8 @@ function renderCard() {
   }
   empty.hidden = true;
   area.hidden = false;
-  cardIndex = ((cardIndex % words.length) + words.length) % words.length;
-  const w = words[cardIndex],
+  cardIndex = ((cardIndex % cardDeck.length) + cardDeck.length) % cardDeck.length;
+  const w = cardAt(cardIndex),
     pronunciation = $("#card-pronunciation");
   $("#card-term").textContent = displayChinese(w.term);
   pronunciation.textContent = w.pronunciation;
@@ -561,13 +753,14 @@ function renderCard() {
   $("#card-meaning").textContent = w.meaning;
   $("#card-note").textContent = w.note || "";
   $("#flashcard").classList.remove("flipped");
-  count.textContent = `${cardIndex + 1} of ${words.length}`;
+  count.textContent = `${cardIndex + 1} of ${cardDeck.length}${activeStudyLevel === "all" ? "" : ` · ${activeStudyLevel}`}`;
 }
 function renderReverseCard() {
+  syncCardDeck();
   const area = $("#reverse-card-area"),
     empty = $("#reverse-empty"),
     count = $("#reverse-count");
-  if (!words.length) {
+  if (!cardDeck.length) {
     area.hidden = true;
     empty.hidden = false;
     count.textContent = "";
@@ -575,8 +768,8 @@ function renderReverseCard() {
   }
   empty.hidden = true;
   area.hidden = false;
-  cardIndex = ((cardIndex % words.length) + words.length) % words.length;
-  const w = words[cardIndex],
+  cardIndex = ((cardIndex % cardDeck.length) + cardDeck.length) % cardDeck.length;
+  const w = cardAt(cardIndex),
     pronunciation = $("#reverse-pronunciation");
   $("#reverse-meaning").textContent = w.meaning;
   pronunciation.textContent = w.pronunciation || "No pinyin saved";
@@ -587,7 +780,7 @@ function renderReverseCard() {
   $("#reverse-term").textContent = displayChinese(w.term);
   $("#reverse-note").textContent = w.note || "";
   $("#reverse-flashcard").classList.remove("flipped");
-  count.textContent = `${cardIndex + 1} of ${words.length}`;
+  count.textContent = `${cardIndex + 1} of ${cardDeck.length}${activeStudyLevel === "all" ? "" : ` · ${activeStudyLevel}`}`;
 }
 function renderQuiz() {
   const area = $("#quiz-area"),
@@ -639,12 +832,18 @@ function renderQuiz() {
     document.createTextNode(" " + displayChinese(example[1])),
   );
   $("#quiz-answer").value = "";
+  const pinyin = $("#quiz-pinyin");
+  const sentencePinyin = `${localPinyin(example[0])} _____ ${localPinyin(example[1])}`.trim();
+  pinyin.textContent = sentencePinyin;
+  pinyin.classList.toggle("pinyin-hidden", !quizShowPinyin || !sentencePinyin);
   $("#quiz-feedback").textContent = "";
   $("#quiz-feedback").classList.remove("incorrect");
   count.textContent = `${quizIndex + 1} of ${words.length}`;
 }
 function openDialog() {
   $("#word-form").reset();
+  $("#add-folder-select").value =
+    selectedFolderId === "all" ? unsortedFolderId : selectedFolderId;
   $("#lookup-status").textContent = "";
   $("#lookup-progress").hidden = true;
   $("#lookup-progress").value = 0;
@@ -718,6 +917,34 @@ async function lookupWord(term) {
 }
 $("#open-add").onclick = openDialog;
 $("#empty-add").onclick = openDialog;
+$("#folder-add").onclick = openDialog;
+$("#new-folder-btn").onclick = () => {
+  const form = $("#folder-form");
+  form.hidden = false;
+  $("#folder-name").focus();
+};
+$("#cancel-folder-btn").onclick = () => {
+  $("#folder-form").reset();
+  $("#folder-form").hidden = true;
+};
+$("#folder-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const name = $("#folder-name").value.trim();
+  if (!name) return;
+  if (folders.some((folder) => folder.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+    showToast("A folder with that name already exists.");
+    $("#folder-name").focus();
+    return;
+  }
+  const folder = { id: crypto.randomUUID(), name };
+  folders.push(folder);
+  selectedFolderId = folder.id;
+  saveFolders();
+  $("#folder-form").reset();
+  $("#folder-form").hidden = true;
+  render();
+  showToast(`Created ${name}. Add a word list to get started.`);
+});
 $("#cancel-btn").onclick = () => $("#word-dialog").close();
 $("#dialog-close").onclick = () => $("#word-dialog").close();
 $("#word-chat-form").addEventListener("submit", (event) => {
@@ -735,7 +962,7 @@ $("#detail-regenerate").onclick = async () => {
   try {
     const [item] = (await enrichWithAI([word.term], true)) || [];
     if (!item?.meaning) throw new Error("No AI result");
-    Object.assign(word, { meaning: item.meaning, pronunciation: item.pinyin || item.pronunciation || "", partOfSpeech: item.partOfSpeech || "", sentences: item.sentences || null });
+    Object.assign(word, { meaning: item.meaning, pronunciation: localPinyin(word.term) || item.pinyin || item.pronunciation || "", partOfSpeech: item.partOfSpeech || "", sentences: item.sentences || null });
     save();
     renderWordDetail();
     showToast("AI study room refreshed.", "xp");
@@ -749,6 +976,7 @@ $("#word-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const submit = e.submitter,
     status = $("#lookup-status"),
+    targetFolderId = $("#add-folder-select").value || unsortedFolderId,
     terms = [
       ...new Set(
         $("#terms-input")
@@ -779,10 +1007,12 @@ $("#word-form").addEventListener("submit", async (e) => {
     progress.value = 48 + Math.round(((i + 1) / terms.length) * 44);
     const aiItem = aiItems?.[i];
     const result = aiItem?.meaning
-      ? { meaning: aiItem.meaning, pronunciation: aiItem.pinyin || aiItem.pronunciation || "" }
+      ? { meaning: aiItem.meaning, pronunciation: "" }
       : await lookupWord(terms[i]);
+    result.pronunciation = localPinyin(terms[i]) || result.pronunciation || "";
     const existing = words.find((word) => termKey(word.term) === termKey(terms[i]));
     if (existing) {
+      existing.folderId = targetFolderId;
       existing.meaning = result.meaning || existing.meaning;
       existing.pronunciation = result.pronunciation || existing.pronunciation;
       existing.sentences = aiItem?.sentences || existing.sentences || null;
@@ -792,6 +1022,7 @@ $("#word-form").addEventListener("submit", async (e) => {
     added.push({
       id: crypto.randomUUID(),
       term: terms[i],
+      folderId: targetFolderId,
       meaning: result.meaning,
       pronunciation: result.pronunciation,
       note: "",
@@ -813,37 +1044,28 @@ $("#pinyin-toggle").checked = showPinyin;
 $("#script-toggle").checked = useTraditional;
 $("#search-input").oninput = render;
 $("#filter-select").onchange = render;
-async function generateMissingPinyin() {
+function generateMissingPinyin() {
   const missing = words.filter(
     (word) => !word.pronunciation && /[\u3400-\u9fff]/.test(word.term),
   );
   if (!missing.length) return;
-  showToast(`Generating pinyin for ${missing.length} word${missing.length === 1 ? "" : "s"}…`);
-  try {
-    for (let start = 0; start < missing.length; start += 50) {
-      const batch = missing.slice(start, start + 50);
-      const items = await enrichWithAI(batch.map((word) => word.term), true);
-      items?.forEach((item, index) => {
-        const word = batch[index];
-        if (!word || !item) return;
-        if (item.pinyin || item.pronunciation) word.pronunciation = item.pinyin || item.pronunciation;
-        if (item.meaning && word.meaning.includes("not found")) word.meaning = item.meaning;
-        if (item.sentences) word.sentences = item.sentences;
-        if (item.partOfSpeech) word.partOfSpeech = item.partOfSpeech;
-      });
-    }
-    save();
-    render();
-    showToast("Pinyin saved to your vocabulary.", "xp");
-  } catch (error) {
-    showToast(error.message || "Could not generate pinyin.");
-  }
+  let generated = 0;
+  missing.forEach((word) => {
+    const pronunciation = localPinyin(word.term);
+    if (!pronunciation) return;
+    word.pronunciation = pronunciation;
+    generated++;
+  });
+  if (!generated) return;
+  save();
+  render();
+  showToast(`Pinyin saved for ${generated} word${generated === 1 ? "" : "s"}.`, "xp");
 }
 $("#pinyin-toggle").onchange = async (e) => {
   showPinyin = e.target.checked;
   localStorage.setItem(pinyinPreferenceKey, showPinyin);
   render();
-  if (showPinyin) await generateMissingPinyin();
+  if (showPinyin) generateMissingPinyin();
 };
 $("#pinyin-toggle").closest("label").addEventListener("click", (event) => {
   if (event.target === $("#pinyin-toggle")) return;
@@ -862,12 +1084,25 @@ $("#clear-filter").onclick = () => {
   render();
 };
 $("#flashcard").onclick = () => $("#flashcard").classList.toggle("flipped");
+$("#shuffle-btn").onclick = shuffleCardDeck;
+$("#reverse-shuffle-btn").onclick = shuffleCardDeck;
 $("#again-btn").onclick = () => {
+  const word = cardAt(cardIndex);
+  if (word) setStudyLevel(word, "new");
+  save();
   cardIndex++;
-  renderCard();
+  render();
+};
+$("#learning-btn").onclick = () => {
+  const word = cardAt(cardIndex);
+  if (word) setStudyLevel(word, "learning");
+  save();
+  cardIndex++;
+  render();
 };
 $("#known-btn").onclick = () => {
-  if (words[cardIndex]) words[cardIndex].known = true;
+  const word = cardAt(cardIndex);
+  if (word) setStudyLevel(word, "known");
   awardXp(5);
   save();
   cardIndex++;
@@ -876,11 +1111,22 @@ $("#known-btn").onclick = () => {
 $("#reverse-flashcard").onclick = () =>
   $("#reverse-flashcard").classList.toggle("flipped");
 $("#reverse-again-btn").onclick = () => {
+  const word = cardAt(cardIndex);
+  if (word) setStudyLevel(word, "new");
+  save();
   cardIndex++;
-  renderReverseCard();
+  render();
+};
+$("#reverse-learning-btn").onclick = () => {
+  const word = cardAt(cardIndex);
+  if (word) setStudyLevel(word, "learning");
+  save();
+  cardIndex++;
+  render();
 };
 $("#reverse-known-btn").onclick = () => {
-  if (words[cardIndex]) words[cardIndex].known = true;
+  const word = cardAt(cardIndex);
+  if (word) setStudyLevel(word, "known");
   awardXp(5);
   save();
   cardIndex++;
@@ -923,6 +1169,19 @@ $("#quiz-level").onchange = (e) => {
   quizVariant = 0;
   renderQuiz();
 };
+$("#quiz-pinyin-toggle").checked = quizShowPinyin;
+$("#quiz-pinyin-toggle").onchange = (e) => {
+  quizShowPinyin = e.target.checked;
+  renderQuiz();
+};
+$("#quiz-pinyin-toggle").closest("label").addEventListener("click", (event) => {
+  if (event.target === $("#quiz-pinyin-toggle")) return;
+  event.preventDefault();
+  const input = $("#quiz-pinyin-toggle");
+  input.checked = !input.checked;
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+});
+$("#pinyin-reader-input").addEventListener("input", renderPinyinReader);
 $("#chat-form").addEventListener("submit", (event) => {
   event.preventDefault();
   sendChatMessage($("#chat-input").value);
@@ -940,6 +1199,8 @@ const pageConfig = {
   study: ["A QUIET MOMENT TO PRACTICE", "Study cards"],
   "reverse-study": ["RECALL FROM THE CLUE", "Reverse recall"],
   "context-quiz": ["READ THE CONTEXT, FIND THE WORD", "Context quiz"],
+  "pinyin-reader": ["CHARACTERS INTO SOUND", "Pinyin reader"],
+  "study-levels": ["SORT YOUR REVIEW DECK", "Study levels"],
   "study-coach": ["YOUR PERSONAL PRACTICE PARTNER", "Study Coach"],
   "word-detail": ["FOCUSED VOCABULARY PRACTICE", "Word Study Room"],
 };
@@ -953,6 +1214,7 @@ function setPage(page) {
     link.classList.toggle("active", link.getAttribute("href") === activeNav);
   });
   if (nextPage === "word-detail") renderWordDetail();
+  if (nextPage === "study-levels") renderStudyLevels();
 }
 function pageFromHash() {
   const hash = location.hash.slice(1);
@@ -962,26 +1224,52 @@ function pageFromHash() {
   }
   setPage(hash === "top" || hash === "" ? "library" : hash);
 }
+function setupSectionReveal() {
+  const sections = document.querySelectorAll(".study-section, .library-section");
+  if (!("IntersectionObserver" in window)) {
+    sections.forEach((section) => section.classList.add("is-visible"));
+    return;
+  }
+  const observer = new IntersectionObserver(
+    (entries, currentObserver) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add("is-visible");
+        currentObserver.unobserve(entry.target);
+      });
+    },
+    { threshold: 0.12 },
+  );
+  sections.forEach((section) => observer.observe(section));
+}
 window.addEventListener("hashchange", pageFromHash);
+save();
+saveFolders();
 render();
+if (showPinyin) generateMissingPinyin();
+renderPinyinReader();
 renderChat();
 pageFromHash();
+setupSectionReveal();
 
-// Frontend-only motion polish: tactile ripples and active navigation feedback.
-document.addEventListener("click", (event) => {
-  const button = event.target.closest("button");
-  if (!button || button.disabled || button.classList.contains("flashcard")) return;
-  const ripple = document.createElement("span");
-  const rect = button.getBoundingClientRect();
-  ripple.className = "ripple";
-  ripple.style.left = `${event.clientX - rect.left}px`;
-  ripple.style.top = `${event.clientY - rect.top}px`;
-  button.append(ripple);
-  ripple.addEventListener("animationend", () => ripple.remove(), { once: true });
+document.querySelectorAll(".nav-group-label").forEach((toggle) => {
+  toggle.addEventListener("click", () => {
+    const group = toggle.closest(".nav-group");
+    const isOpen = group.classList.toggle("is-open");
+    toggle.setAttribute("aria-expanded", String(isOpen));
+  });
 });
 
 document.querySelectorAll(".nav-link").forEach((link) => {
   link.addEventListener("click", () => {
-    setPage(link.getAttribute("href").slice(1));
+    const page = link.getAttribute("href").slice(1);
+    if (page === "study" || page === "reverse-study") {
+      activeStudyLevel = "all";
+      cardDeck = [];
+      cardIndex = 0;
+      renderCard();
+      renderReverseCard();
+    }
+    setPage(page);
   });
 });

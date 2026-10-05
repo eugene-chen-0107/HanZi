@@ -39,7 +39,9 @@ function parseJsonResponse(text) {
   try {
     return JSON.parse(cleaned);
   } catch {
-    const starts = [cleaned.indexOf("{"), cleaned.indexOf("[")].filter((index) => index >= 0);
+    const starts = [cleaned.indexOf("{"), cleaned.indexOf("[")].filter(
+      (index) => index >= 0,
+    );
     const start = starts.length ? Math.min(...starts) : -1;
     const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
     if (start >= 0 && end > start) {
@@ -47,7 +49,9 @@ function parseJsonResponse(text) {
         return JSON.parse(cleaned.slice(start, end + 1));
       } catch {}
     }
-    throw new Error("The AI returned incomplete JSON. Try fewer words at once.");
+    throw new Error(
+      "The AI returned incomplete JSON. Try fewer words at once.",
+    );
   }
 }
 function readBody(req) {
@@ -78,9 +82,14 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse(await readBody(req));
       const messages = Array.isArray(body.messages) ? body.messages : [];
       const words = Array.isArray(body.words) ? body.words : [];
-      const focusWord = body.focusWord && typeof body.focusWord === "object" ? body.focusWord : null;
+      const focusWord =
+        body.focusWord && typeof body.focusWord === "object"
+          ? body.focusWord
+          : null;
       if (!messages.length || messages.length > 12)
-        return send(res, 400, { error: "Send a conversation with 1 to 12 messages." });
+        return send(res, 400, {
+          error: "Send a conversation with 1 to 12 messages.",
+        });
       const safeMessages = messages
         .filter((message) => ["user", "assistant"].includes(message.role))
         .map((message) => ({
@@ -91,31 +100,57 @@ const server = http.createServer(async (req, res) => {
         .slice(0, 50)
         .map((word) => `${word.term} — ${word.meaning || "meaning unknown"}`)
         .join("\\n");
-      const api = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-          "Content-Type": "application/json",
+      const api = await fetch(
+        "https://api.groq.com/openai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: process.env.GROQ_CHAT_MODEL || "openai/gpt-oss-20b",
+            temperature: 0.7,
+            messages: [
+              {
+                role: "system",
+                content: `You are Hanji, a warm and perceptive Chinese language tutor having a real conversation with one learner. Your goal is to help the learner communicate more naturally, not to recite dictionary entries. The coach's response language is English: never answer entirely in Chinese, even when the learner writes in Chinese.
+
+Conversation style:
+- Respond to what the learner is trying to say before teaching anything extra. Sound encouraging, curious, and human.
+- Ask one useful follow-up question when it would keep the conversation going. Do not end every response with a generic question.
+- Keep replies focused and reasonably short. Teach one or two useful ideas at a time instead of dumping facts or lists.
+- When the learner writes Chinese, respond in English first, then gently correct only the most important issue. Show the improved Chinese sentence, its English translation, and briefly explain why.
+- Write all explanations, questions, corrections, instructions, encouragement, and feedback in English. Chinese may appear only as clearly labeled practice material, quoted examples, or target vocabulary, and any Chinese must have an English translation.
+- Invite the learner to produce language: ask them in English to answer in Chinese, complete a sentence, choose between two natural options, or try again. Give a small hint before revealing an answer.
+- Use the learner's saved words in realistic situations, mini-dialogues, and contextual practice. Do not force vocabulary into a sentence when it would sound unnatural.
+- Include pinyin only when it helps pronunciation or the learner asks for it, and explain it in English.
+- If the learner asks for a quiz, give the prompts and feedback in English, show Chinese only for the exercise material, and run it interactively one question at a time. If they ask for a conversation, explain the role-play in English and keep guidance in English.
+- Celebrate progress specifically, and correct mistakes without sounding judgmental.
+- Never invent a saved word or pretend the learner has practiced something they have not. You may use simple unsaved words when needed for a natural example, but say so if it matters.
+
+${focusWord ? `For this focused word, teach it through conversation and practice rather than a fact dump. Use its meaning, part of speech, register, collocations, grammar patterns, pronunciation, and natural examples only when relevant to the learner's question: ${JSON.stringify(focusWord)}.` : ""}
+Saved vocabulary:\\n${vocabulary || "No words saved yet."}`,
+              },
+              ...safeMessages,
+            ],
+          }),
         },
-        body: JSON.stringify({
-          model: process.env.GROQ_CHAT_MODEL || "openai/gpt-oss-20b",
-          temperature: 0.5,
-          messages: [
-            {
-              role: "system",
-              content: `You are Hanji's warm, precise Chinese language Study Coach. Help the learner practice their saved words. Give short explanations, corrections, examples, and mini exercises. Prefer Chinese examples with English explanations. Do not invent saved vocabulary. ${focusWord ? `Focus closely on this word: ${JSON.stringify(focusWord)}. Explain its exact meaning, part of speech, register, common collocations, grammar patterns, pronunciation, and natural examples. Correct misconceptions directly.` : ""} Saved vocabulary:\\n${vocabulary || "No words saved yet."}`,
-            },
-            ...safeMessages,
-          ],
-        }),
-      });
+      );
       if (!api.ok)
-        return send(res, api.status, { error: "The Study Coach request failed.", detail: await api.text() });
+        return send(res, api.status, {
+          error: "The Study Coach request failed.",
+          detail: await api.text(),
+        });
       const message = responseText(await api.json());
-      if (!message) throw new Error("The Study Coach returned an empty response");
+      if (!message)
+        throw new Error("The Study Coach returned an empty response");
       return send(res, 200, { message });
     } catch (error) {
-      return send(res, 500, { error: "Could not reach the Study Coach.", detail: error.message });
+      return send(res, 500, {
+        error: "Could not reach the Study Coach.",
+        detail: error.message,
+      });
     }
   }
   if (req.method !== "POST" || req.url !== "/api/enrich")
@@ -132,33 +167,38 @@ const server = http.createServer(async (req, res) => {
       const terms = JSON.parse(raw).terms;
       if (!Array.isArray(terms) || !terms.length || terms.length > 50)
         return send(res, 400, { error: "Send 1 to 50 words." });
-      const prompt = `You are a meticulous Chinese-English lexicographer. Analyze every supplied term carefully before answering. Return a JSON object with an items array, one item per input in the same order. Each item must have exactly: {"term":"original input","meaning":"accurate concise English definition","pinyin":"standard tone-marked Hanyu Pinyin with spaces between syllables; empty only when the term is not Chinese","partOfSpeech":"noun, verb, adjective, phrase, etc.","sentences":{"beginner":["short natural Chinese sentence containing the exact term"],"intermediate":["natural Chinese sentence containing the exact term"],"advanced":["natural sophisticated Chinese sentence containing the exact term"]}}. Preserve the exact Chinese term in every Chinese sentence. Check polysemy and choose the most common learner-relevant meaning; mention a second common meaning briefly when necessary. Do not translate word-for-word if it produces unnatural English. Do not put English inside Chinese example sentences. Terms: ${JSON.stringify(terms)}`;
+      const prompt = `You are a meticulous Chinese-English lexicographer. Analyze every supplied term carefully before answering. Return a JSON object with an items array, one item per input in the same order. Each item must have exactly: {"term":"original input","meaning":"accurate concise English definition","partOfSpeech":"noun, verb, adjective, phrase, etc.","sentences":{"beginner":["short natural Chinese sentence containing the exact term"],"intermediate":["natural Chinese sentence containing the exact term"],"advanced":["natural sophisticated Chinese sentence containing the exact term"]}}. Preserve the exact Chinese term in every Chinese sentence. Check polysemy and choose the most common learner-relevant meaning; mention a second common meaning briefly when necessary. Do not translate word-for-word if it produces unnatural English. Do not put English inside Chinese example sentences. Terms: ${JSON.stringify(terms)}`;
       const fallbackModel = process.env.GROQ_CHAT_MODEL || "openai/gpt-oss-20b";
-      const configuredModel = process.env.GROQ_ENRICH_MODEL || "openai/gpt-oss-20b";
-      const selectedModel = /prompt-guard|safeguard/i.test(configuredModel) ? fallbackModel : configuredModel;
-      let api = await fetch(
-        "https://api.groq.com/openai/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: selectedModel,
-            messages: [
-              {
-                role: "system",
-                content: "Return valid JSON only. Never guess pinyin tones; use standard Hanyu Pinyin and verify each syllable.",
-              },
-              { role: "user", content: prompt },
-            ],
-            temperature: 0.1,
-            max_completion_tokens: 4_000,
-          }),
+      const configuredModel =
+        process.env.GROQ_ENRICH_MODEL || "openai/gpt-oss-20b";
+      const selectedModel = /prompt-guard|safeguard/i.test(configuredModel)
+        ? fallbackModel
+        : configuredModel;
+      let api = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+          "Content-Type": "application/json",
         },
-      );
-      if (!api.ok && selectedModel !== fallbackModel && [400, 404, 422].includes(api.status)) {
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: [
+            {
+              role: "system",
+              content:
+                "Return valid JSON only. Do not include pinyin; pronunciation is generated locally by the app.",
+            },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0.1,
+          max_completion_tokens: 4_000,
+        }),
+      });
+      if (
+        !api.ok &&
+        selectedModel !== fallbackModel &&
+        [400, 404, 422].includes(api.status)
+      ) {
         await api.text();
         api = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
@@ -169,7 +209,11 @@ const server = http.createServer(async (req, res) => {
           body: JSON.stringify({
             model: fallbackModel,
             messages: [
-              { role: "system", content: "Return valid JSON only. Never guess pinyin tones; use standard Hanyu Pinyin and verify each syllable." },
+              {
+                role: "system",
+                content:
+                  "Return valid JSON only. Do not include pinyin; pronunciation is generated locally by the app.",
+              },
               { role: "user", content: prompt },
             ],
             temperature: 0.1,
@@ -188,7 +232,8 @@ const server = http.createServer(async (req, res) => {
       );
       const parsed = parseJsonResponse(text);
       const items = Array.isArray(parsed) ? parsed : parsed.items;
-      if (!Array.isArray(items)) throw new Error("AI response did not include an items array");
+      if (!Array.isArray(items))
+        throw new Error("AI response did not include an items array");
       return send(res, 200, { items });
     } catch (error) {
       return send(res, 500, {
@@ -198,6 +243,6 @@ const server = http.createServer(async (req, res) => {
     }
   });
 });
-server.listen(process.env.PORT || 3000, () =>
-  console.log("Hanji is running at http://localhost:3000"),
+server.listen(process.env.PORT || 3001, () =>
+  console.log("Hanji is running at http://localhost:3001"),
 );
