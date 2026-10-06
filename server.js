@@ -16,7 +16,7 @@ const files = {
   "/": "index.html",
   "/index.html": "index.html",
   "/styles.css": "styles.css",
-  "/app.js": "app.js",
+  "/client.js": "client.js",
 };
 const types = {
   ".html": "text/html; charset=utf-8",
