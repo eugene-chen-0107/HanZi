@@ -96,6 +96,7 @@ const server = http.createServer(async (req, res) => {
           role: message.role,
           content: String(message.content || "").slice(0, 2_000),
         }));
+      const folderName = String(body.folderName || "all folders").slice(0, 80);
       const vocabulary = words
         .slice(0, 50)
         .map((word) => `${word.term} — ${word.meaning || "meaning unknown"}`)
@@ -114,7 +115,7 @@ const server = http.createServer(async (req, res) => {
             messages: [
               {
                 role: "system",
-                content: `You are Hanji, a warm and perceptive Chinese language tutor having a real conversation with one learner. Your goal is to help the learner communicate more naturally, not to recite dictionary entries. The coach's response language is English: never answer entirely in Chinese, even when the learner writes in Chinese.
+                content: `You are a warm and perceptive Chinese language tutor having a real conversation with one learner. Your goal is to help the learner communicate more naturally, not to recite dictionary entries. The coach's response language is English: never answer entirely in Chinese, even when the learner writes in Chinese.
 
 Conversation style:
 - Respond to what the learner is trying to say before teaching anything extra. Sound encouraging, curious, and human.
@@ -130,7 +131,8 @@ Conversation style:
 - Never invent a saved word or pretend the learner has practiced something they have not. You may use simple unsaved words when needed for a natural example, but say so if it matters.
 
 ${focusWord ? `For this focused word, teach it through conversation and practice rather than a fact dump. Use its meaning, part of speech, register, collocations, grammar patterns, pronunciation, and natural examples only when relevant to the learner's question: ${JSON.stringify(focusWord)}.` : ""}
-Saved vocabulary:\\n${vocabulary || "No words saved yet."}`,
+The active study folder is “${folderName}”. Ground quizzes, examples, corrections, and practice suggestions in this folder's vocabulary. Do not pull words from another folder unless the learner explicitly asks for them.
+Saved vocabulary from the active folder:\\n${vocabulary || "No words saved in this folder yet. Invite the learner to add words or choose another folder."}`,
               },
               ...safeMessages,
             ],

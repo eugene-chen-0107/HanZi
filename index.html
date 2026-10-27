@@ -232,6 +232,7 @@
             <div class="nav-group-panel" id="nav-library-links">
               <div class="nav-group-links">
                 <a class="nav-link active" href="#library"><span aria-hidden="true">▦</span> My vocabulary</a>
+                <a class="nav-link" href="#folders"><span aria-hidden="true">▱</span> My folders</a>
               </div>
             </div>
           </div>
@@ -260,11 +261,7 @@
           <span class="dot"></span
           ><span>Your words are saved privately<br />on this device.</span>
         </div>
-        <div class="sidebar-progress" aria-label="Daily learning goal">
-          <div class="sidebar-progress-top"><span>Daily goal</span><strong id="goal-label">0 / 5 XP</strong></div>
-          <div class="mini-progress"><span id="goal-progress"></span></div>
-          <p>Keep your learning streak alive.</p>
-        </div>
+
       </aside>
 
       <section class="content" id="top" data-page="library" tabindex="-1" aria-label="Hanji vocabulary studio">
@@ -277,6 +274,11 @@
             <span aria-hidden="true">＋</span> Add a word
           </button>
         </header>
+        <div class="study-scope-bar" id="study-scope-bar" hidden>
+          <label for="study-folder-select">Practice from</label>
+          <select id="study-folder-select" aria-label="Choose the folder for study tools"></select>
+          <span id="study-scope-count" class="study-scope-count"></span>
+        </div>
 
         <section class="welcome library-page-support" aria-label="Vocabulary summary">
           <div>
@@ -294,8 +296,59 @@
 
         <section class="stats-grid library-page-support" aria-label="Learning progress">
           <article class="stat-card stat-streak"><span class="stat-icon" aria-hidden="true">✦</span><div><strong id="streak-count">0</strong><small>day streak</small></div></article>
-          <article class="stat-card stat-xp"><span class="stat-icon" aria-hidden="true">◆</span><div><strong id="xp-count">0</strong><small>total XP · level <span id="level-count">1</span></small></div></article>
           <article class="stat-card stat-review"><span class="stat-icon" aria-hidden="true">◌</span><div><strong id="review-count">0</strong><small>to review</small></div></article>
+        </section>
+
+        <section id="folders" class="library-section page-view folders-dashboard">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Your words, kept in their place</p>
+              <h2>My folders</h2>
+              <p>Open a folder to see its words and start a dedicated Hanji chat.</p>
+            </div>
+            <button class="outline-btn" id="dashboard-new-folder" type="button">＋ New folder</button>
+          </div>
+          <div id="folder-dashboard-list" class="folder-dashboard-grid"></div>
+          <div id="folder-dashboard-empty" class="empty-state" hidden>
+            <div class="empty-glyph">冊</div>
+            <h3>Your next word set starts here.</h3>
+            <p>Create a folder for a class, topic, or trip. Each one gets its own word collection and Hanji conversation.</p>
+            <button class="primary-btn" id="dashboard-empty-create" type="button">Create your first folder</button>
+          </div>
+        </section>
+
+        <section id="folder-space" class="library-section page-view folder-space-page">
+          <button class="back-link folder-back-link" id="folder-back-to-dashboard" type="button">← Back to all folders</button>
+          <div class="folder-space-heading">
+            <div><p class="eyebrow">Your folder workspace</p><h2 id="folder-space-title">Folder</h2><p id="folder-space-subtitle" class="folder-space-subtitle"></p></div>
+            <div class="folder-space-actions">
+              <button class="outline-btn" id="folder-space-add" type="button">＋ Add words</button>
+              <button class="primary-btn" id="folder-space-coach" type="button">✦ Open Hanji</button>
+            </div>
+          </div>
+          <div class="folder-space-stats"><span id="folder-space-count">0 words</span><span id="folder-space-review-count">0 to review</span></div>
+          <div id="folder-space-word-list" class="word-list"></div>
+          <div id="folder-space-empty" class="folder-empty" hidden><span aria-hidden="true">▱</span><div><strong>This folder is ready for its first words.</strong><p>Add a word list here, then use this folder’s own Hanji coach to practice it.</p></div><button class="outline-btn" id="folder-space-empty-add" type="button">＋ Add words</button></div>
+        </section>
+
+        <section id="folder-coach" class="study-section coach-section page-view folder-coach-page">
+          <button class="back-link folder-coach-back" id="folder-coach-back" type="button">← Back to folder</button>
+          <div class="section-title">
+            <div><p class="eyebrow">A private practice partner for this folder</p><h2 id="folder-coach-title">Hanji</h2></div>
+            <button id="clear-folder-chat-btn" class="text-btn" type="button">Clear this chat</button>
+          </div>
+          <p class="reverse-description">This Hanji knows only the words in this folder. Chats and practice stay separate between folders.</p>
+          <div class="coach-shell">
+            <div class="coach-header"><span class="coach-avatar" aria-hidden="true">✦</span><div><strong id="folder-coach-name">Hanji</strong><span><i></i> Private to <span id="folder-coach-folder-name">this folder</span></span></div><span class="coach-context"><b id="folder-coach-word-count">0</b> words in context</span></div>
+            <div id="folder-chat-messages" class="chat-messages" aria-live="polite"></div>
+            <div class="quick-prompts" aria-label="Suggested folder prompts">
+              <button type="button" data-folder-prompt="Quiz me on words in this folder, one at a time.">Quiz this set</button>
+              <button type="button" data-folder-prompt="Explain one useful word from this folder with a memorable example.">Explain a word</button>
+              <button type="button" data-folder-prompt="Give me a short dialogue using words from this folder.">Make a dialogue</button>
+            </div>
+            <form id="folder-chat-form" class="chat-form"><input id="folder-chat-input" name="message" autocomplete="off" placeholder="Ask this folder’s Hanji anything…" aria-label="Message this folder’s Hanji" required /><button class="primary-btn" type="submit" aria-label="Send message to folder Hanji">↑</button></form>
+            <p class="coach-disclaimer">Only this folder’s words are sent as practice context.</p>
+          </div>
         </section>
 
         <section id="library" class="library-section page-view">
@@ -311,7 +364,7 @@
           <div class="folder-header">
             <div>
               <h3>Your folders</h3>
-              <p>Keep each unit or topic in its own word group.</p>
+              <p>Move words with each card’s menu. Deleting a folder keeps its words in Unsorted.</p>
             </div>
             <button class="outline-btn" id="new-folder-btn" type="button">＋ New folder</button>
           </div>
@@ -348,16 +401,34 @@
                 class="toggle-track"
                 ><span class="toggle-knob"></span></span
             ></label>
-            <select id="filter-select" aria-label="Filter vocabulary">
-              <option value="all">All words</option>
-              <option value="new">To review</option>
-              <option value="known">Confident</option>
-            </select>
+            <label class="filter-select-wrap" aria-label="Filter vocabulary">
+              <span class="sr-only">Filter vocabulary</span>
+              <select id="filter-select" aria-label="Filter vocabulary">
+                <option value="all">All words</option>
+                <option value="new">To review</option>
+                <option value="known">Confident</option>
+              </select>
+            </label>
+          </div>
+          <div class="word-management-row">
+            <button class="outline-btn" id="toggle-select-mode" type="button" aria-pressed="false">Select words</button>
+            <span id="word-total-label" class="word-total-label"></span>
+          </div>
+          <div id="selection-toolbar" class="selection-toolbar" hidden>
+            <label class="select-all-control"><input id="select-all-words" type="checkbox" /><span>Select all</span></label>
+            <button class="text-btn" id="deselect-all-words" type="button">Deselect all</button>
+            <span id="selection-count" class="selection-count">0 selected</span>
+            <label class="bulk-move-label" for="bulk-move-select">Move to</label>
+            <select id="bulk-move-select" aria-label="Move selected words to a folder"></select>
+            <button class="outline-btn" id="bulk-add-words" type="button">＋ Add words</button>
+            <button class="outline-btn" id="bulk-edit-words" type="button" disabled>Edit selected</button>
+            <button class="outline-btn" id="bulk-enrich-words" type="button" disabled>✦ AI enrich</button>
+            <button class="delete-selected-btn" id="bulk-delete-words" type="button" disabled>Remove selected</button>
           </div>
           <div id="word-list" class="word-list"></div>
           <div id="folder-empty" class="folder-empty" hidden>
             <span aria-hidden="true">▱</span>
-            <div><strong>This folder is empty.</strong><p>Add a new word list directly to this folder.</p></div>
+            <div><strong id="folder-empty-title">This folder is empty.</strong><p id="folder-empty-message">Add a new word list directly to this folder.</p></div>
             <button class="outline-btn" id="folder-add" type="button">＋ Add words</button>
           </div>
           <div id="empty-state" class="empty-state">
@@ -492,8 +563,7 @@
             </div>
           </div>
           <p class="reverse-description">
-            Complete each intermediate-level Chinese sentence with the
-            vocabulary word that fits the blank.
+            Complete each Chinese sentence with the vocabulary word that fits the blank. Change the folder above to focus your quiz.
           </p>
           <div id="quiz-empty" class="study-empty">
             Add a few words above and your contextual quizzes will appear here.
@@ -568,7 +638,7 @@
             </div>
           </div>
           <p class="reverse-description">
-            Move cards between levels as your recall improves, then focus your study time where it matters most.
+            Move cards between levels as your recall improves, then focus your study time where it matters most. The folder selector above scopes these levels.
           </p>
           <div id="study-level-list" class="level-board"></div>
         </section>
@@ -581,9 +651,9 @@
             </div>
             <button id="clear-chat-btn" class="text-btn" type="button">Clear chat</button>
           </div>
-          <p class="reverse-description">Ask for a quiz, a correction, or a memorable way to use one of your saved words.</p>
+          <p class="reverse-description">Ask for a quiz, a correction, or a memorable way to use a word from your selected folder.</p>
           <div class="coach-shell">
-            <div class="coach-header"><span class="coach-avatar" aria-hidden="true">✦</span><div><strong>Hanji Coach</strong><span><i></i> Online · knows your vocabulary</span></div><span class="coach-context"><b id="coach-word-count">0</b> words in context</span></div>
+            <div class="coach-header"><span class="coach-avatar" aria-hidden="true">✦</span><div><strong>Hanji Coach</strong><span><i></i> Focused on <span id="coach-folder-name">all folders</span></span></div><span class="coach-context"><b id="coach-word-count">0</b> words in context</span></div>
             <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
             <div class="quick-prompts" aria-label="Suggested prompts">
               <button type="button" data-prompt="Quiz me on my saved words, one at a time.">Quiz me</button>
@@ -594,12 +664,36 @@
               <input id="chat-input" name="message" autocomplete="off" placeholder="Ask your Study Coach anything…" aria-label="Message Study Coach" required />
               <button class="primary-btn" type="submit" aria-label="Send message">↑</button>
             </form>
-            <p class="coach-disclaimer">Coach responses are generated from your current vocabulary deck.</p>
+            <p class="coach-disclaimer">Coach responses use words in the selected folder. Choose All folders to include everything.</p>
           </div>
         </section>
       </section>
     </main>
 
+    <dialog id="folder-dialog" class="folder-dialog">
+      <form id="folder-form-dialog" method="dialog">
+        <div class="dialog-top"><div><p class="eyebrow">Make room for a new word set</p><h2>Create a folder</h2></div><button type="button" id="folder-dialog-close" class="icon-btn" aria-label="Close">×</button></div>
+        <p class="dialog-intro">Each folder has its own vocabulary and a private Hanji coach that only studies those words.</p>
+        <label for="folder-dialog-name">Folder title</label>
+        <input id="folder-dialog-name" name="name" maxlength="40" placeholder="e.g. Travel phrases" required />
+        <p id="folder-dialog-error" class="folder-dialog-error" aria-live="polite"></p>
+        <div class="dialog-actions"><button type="button" id="folder-dialog-cancel" class="outline-btn">Cancel</button><button type="submit" class="primary-btn">Create folder</button></div>
+      </form>
+    </dialog>
+    <dialog id="edit-words-dialog" class="edit-words-dialog">
+      <form id="edit-words-form" method="dialog">
+        <div class="dialog-top">
+          <div><p class="eyebrow">Update your collection</p><h2>Edit selected words</h2></div>
+          <button type="button" id="edit-words-close" class="icon-btn" aria-label="Close">×</button>
+        </div>
+        <p class="dialog-intro">Adjust a word’s spelling, pronunciation, meaning, or note. Blank fields are kept empty.</p>
+        <div id="bulk-edit-list" class="bulk-edit-list"></div>
+        <div class="dialog-actions">
+          <button type="button" id="cancel-edit-words" class="outline-btn">Cancel</button>
+          <button type="submit" class="primary-btn">Save changes</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="word-dialog">
       <form id="word-form" method="dialog">
         <div class="dialog-top">
@@ -652,6 +746,7 @@
     </dialog>
     <template id="word-template"
       ><article class="word-card">
+        <label class="word-select-control"><input class="word-select-checkbox" type="checkbox" /><span class="sr-only">Select word</span></label>
         <div class="word-main">
           <h3 class="term"></h3>
           <p class="pronunciation"></p>

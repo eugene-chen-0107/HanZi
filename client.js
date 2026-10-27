@@ -1,6 +1,7 @@
 const $ = (s) => document.querySelector(s);
 const libraryKey = "hanji-vocabulary-v1";
 const folderStorageKey = "hanji-vocabulary-folders-v1";
+const studyFolderKey = "hanji-study-folder-v1";
 const unsortedFolderId = "unsorted";
 const pinyinPreferenceKey = "hanji-show-pinyin";
 const scriptPreferenceKey = "hanji-traditional-script";
@@ -53,6 +54,7 @@ let words = JSON.parse(localStorage.getItem(libraryKey) || "null") || defaults;
 let folders = JSON.parse(localStorage.getItem(folderStorageKey) || "null") || [
   { id: unsortedFolderId, name: "Unsorted" },
 ];
+let activeFolderId = null;
 if (!folders.some((folder) => folder.id === unsortedFolderId)) {
   folders.unshift({ id: unsortedFolderId, name: "Unsorted" });
 }
@@ -60,6 +62,15 @@ words.forEach((word) => {
   if (!folders.some((folder) => folder.id === word.folderId)) word.folderId = unsortedFolderId;
 });
 let selectedFolderId = "all";
+let selectedWordIds = new Set();
+let selectMode = false;
+let selectedStudyFolderId = localStorage.getItem(studyFolderKey) || "all";
+function scopedChatKey() {
+  return `${chatKey}:${selectedStudyFolderId}`;
+}
+if (selectedStudyFolderId !== "all" && !folders.some((folder) => folder.id === selectedStudyFolderId)) {
+  selectedStudyFolderId = "all";
+}
 const aiCacheKey = "hanji-ai-enrichment-cache-v2";
 let aiCache = JSON.parse(localStorage.getItem(aiCacheKey) || "{}") || {};
 function termKey(term) {
@@ -84,20 +95,37 @@ let quizLevel = "intermediate";
 let showPinyin = localStorage.getItem(pinyinPreferenceKey) !== "false";
 let quizShowPinyin = showPinyin;
 let useTraditional = localStorage.getItem(scriptPreferenceKey) === "true";
-let stats = JSON.parse(localStorage.getItem(statsKey) || "null") || {
-  xp: 0,
-  streak: 0,
-  lastActive: "",
-  dailyXp: 0,
-  dailyDate: "",
+const savedStats = JSON.parse(localStorage.getItem(statsKey) || "null") || {};
+let stats = {
+  streak: savedStats.streak || 0,
+  lastActive: savedStats.lastActive || "",
 };
-let chatHistory = JSON.parse(localStorage.getItem(chatKey) || "null") || [];
+let chatHistory = JSON.parse(
+  localStorage.getItem(scopedChatKey()) ||
+    (selectedStudyFolderId === "all" ? localStorage.getItem(chatKey) : "null") ||
+    "null",
+) || [];
 let chatBusy = false;
 let activeDetailId = null;
 let detailChatHistory = [];
 let detailChatBusy = false;
+let folderChatHistory = [];
+let folderChatBusy = false;
+function folderChatKey(folderId) {
+  return `hanji-folder-chat-v1:${folderId}`;
+}
+function loadFolderChat(folderId) {
+  folderChatHistory = JSON.parse(localStorage.getItem(folderChatKey(folderId)) || "null") || [];
+}
+function saveFolderChat(folderId) {
+  if (!folderId) return;
+  localStorage.setItem(folderChatKey(folderId), JSON.stringify(folderChatHistory.slice(-12)));
+}
 function saveStats() {
-  localStorage.setItem(statsKey, JSON.stringify(stats));
+  localStorage.setItem(statsKey, JSON.stringify({
+    streak: stats.streak,
+    lastActive: stats.lastActive,
+  }));
 }
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -110,18 +138,31 @@ function touchStreak() {
   const yesterday = previous.toISOString().slice(0, 10);
   stats.streak = stats.lastActive === yesterday ? stats.streak + 1 : 1;
   stats.lastActive = today;
-  stats.dailyXp = 0;
-  stats.dailyDate = today;
   saveStats();
 }
-function awardXp(amount) {
-  touchStreak();
-  if (stats.dailyDate !== todayKey()) stats.dailyXp = 0;
-  stats.xp += amount;
-  stats.dailyXp += amount;
-  saveStats();
-  renderStats();
-  showToast(`+${amount} XP · Keep going!`, "xp");
+function studyWords() {
+  return selectedStudyFolderId === "all"
+    ? words
+    : words.filter((word) => word.folderId === selectedStudyFolderId);
+}
+function studyFolderName() {
+  return selectedStudyFolderId === "all" ? "all folders" : folderName(selectedStudyFolderId);
+}
+let quizWords = [];
+function studyEmptyMessage(defaultMessage) {
+  return selectedStudyFolderId === "all"
+    ? defaultMessage
+    : `No words in “${studyFolderName()}” yet. Add words to this folder from your vocabulary library.`;
+}
+function selectStudyFolder(folderId) {
+  selectedStudyFolderId = folders.some((folder) => folder.id === folderId) ? folderId : "all";
+  localStorage.setItem(studyFolderKey, selectedStudyFolderId);
+  chatHistory = JSON.parse(localStorage.getItem(scopedChatKey()) || "null") || [];
+  cardDeck = [];
+  cardIndex = 0;
+  activeStudyLevel = "all";
+  quizIndex = 0;
+  quizVariant = 0;
 }
 function renderChat() {
   const container = $("#chat-messages");
@@ -140,10 +181,11 @@ function renderChat() {
     container.append(bubble);
   });
   container.scrollTop = container.scrollHeight;
-  $("#coach-word-count").textContent = words.length;
+  $("#coach-word-count").textContent = studyWords().length;
+  $("#coach-folder-name").textContent = studyFolderName();
 }
 function saveChat() {
-  localStorage.setItem(chatKey, JSON.stringify(chatHistory.slice(-12)));
+  localStorage.setItem(scopedChatKey(), JSON.stringify(chatHistory.slice(-12)));
 }
 async function sendChatMessage(content) {
   if (chatBusy || !content.trim()) return;
@@ -165,13 +207,17 @@ async function sendChatMessage(content) {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: chatHistory, words }),
+      body: JSON.stringify({
+        messages: chatHistory,
+        words: studyWords(),
+        folderName: studyFolderName(),
+      }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Chat unavailable");
     chatHistory.push({ role: "assistant", content: data.message });
     saveChat();
-    awardXp(2);
+    touchStreak();
   } catch (error) {
     showToast(error.message || "The Study Coach is unavailable.");
   } finally {
@@ -252,7 +298,7 @@ async function sendWordChatMessage(content) {
     if (!response.ok) throw new Error(data.error || "Word tutor unavailable");
     detailChatHistory.push({ role: "assistant", content: data.message });
     saveDetailChat(word);
-    awardXp(3);
+    touchStreak();
   } catch (error) {
     showToast(error.message || "The word tutor is unavailable.");
   } finally {
@@ -264,21 +310,15 @@ async function sendWordChatMessage(content) {
   }
 }
 function renderStats() {
-  const today = todayKey();
-  if (stats.dailyDate !== today) stats.dailyXp = 0;
   $("#streak-count").textContent = stats.streak;
-  $("#xp-count").textContent = stats.xp;
-  $("#level-count").textContent = Math.floor(stats.xp / 100) + 1;
   $("#review-count").textContent = words.filter((word) => !word.known).length;
-  $("#goal-label").textContent = `${Math.min(stats.dailyXp, 5)} / 5 XP`;
-  $("#goal-progress").style.width = `${Math.min((stats.dailyXp / 5) * 100, 100)}%`;
 }
 function showToast(message, type = "info") {
   const region = $("#toast-region");
   if (!region) return;
   const toast = document.createElement("div");
   toast.className = `toast toast-${type}`;
-  toast.innerHTML = `<span>${type === "xp" ? "✦" : "i"}</span>${message}`;
+  toast.innerHTML = `<span aria-hidden="true">i</span>${escapeHtml(message)}`;
   region.append(toast);
   setTimeout(() => toast.classList.add("toast-out"), 2200);
   setTimeout(() => toast.remove(), 2600);
@@ -499,59 +539,270 @@ function saveFolders() {
 function folderName(folderId) {
   return folders.find((folder) => folder.id === folderId)?.name || "Unsorted";
 }
+function deleteFolder(folderId) {
+  const folder = folders.find((item) => item.id === folderId);
+  if (!folder || folderId === unsortedFolderId) return;
+  const wordCount = words.filter((word) => word.folderId === folderId).length;
+  const wordMessage = wordCount
+    ? `${wordCount} ${wordCount === 1 ? "word" : "words"} will be moved to Unsorted.`
+    : "This folder is empty.";
+  if (!window.confirm(`Delete “${folder.name}”? ${wordMessage} This cannot be undone.`)) return;
+
+  words.forEach((word) => {
+    if (word.folderId === folderId) word.folderId = unsortedFolderId;
+  });
+  folders = folders.filter((item) => item.id !== folderId);
+  if (selectedFolderId === folderId) selectedFolderId = "all";
+  localStorage.removeItem(folderChatKey(folderId));
+  if (activeFolderId === folderId) activeFolderId = null;
+  if (selectedStudyFolderId === folderId) {
+    selectStudyFolder("all");
+    renderChat();
+  }
+  save();
+  saveFolders();
+  render();
+  showToast(`Deleted ${folder.name}.${wordCount ? ` ${wordCount} ${wordCount === 1 ? "word was" : "words were"} moved to Unsorted.` : ""}`);
+}
+function renderFoldersDashboard() {
+  const dashboard = $("#folder-dashboard-list");
+  if (!dashboard) return;
+  dashboard.replaceChildren();
+  folders.forEach((folder) => {
+    const folderWords = words.filter((word) => word.folderId === folder.id);
+    const card = document.createElement("article");
+    card.className = "folder-dashboard-card";
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "folder-dashboard-open";
+    open.setAttribute("aria-label", `Open ${folder.name} folder and its ${folderWords.length} words`);
+    open.innerHTML = `<span class="folder-dashboard-icon" aria-hidden="true">${folder.id === unsortedFolderId ? "▱" : "冊"}</span><span class="folder-dashboard-copy"><strong>${escapeHtml(folder.name)}</strong><small>${folderWords.length} ${folderWords.length === 1 ? "word" : "words"}</small><span class="folder-dashboard-preview">${folderWords.slice(0, 4).map((word) => `<i>${escapeHtml(displayChinese(word.term))}</i>`).join("") || "Add your first words"}</span></span><span class="folder-dashboard-arrow" aria-hidden="true">↗</span>`;
+    open.onclick = () => { location.hash = `folder-${encodeURIComponent(folder.id)}`; };
+    card.append(open);
+    if (folder.id !== unsortedFolderId) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "folder-dashboard-delete";
+      remove.textContent = "×";
+      remove.title = `Delete ${folder.name}`;
+      remove.setAttribute("aria-label", `Delete folder ${folder.name}`);
+      remove.onclick = () => deleteFolder(folder.id);
+      card.append(remove);
+    }
+    dashboard.append(card);
+  });
+  $("#folder-dashboard-empty").hidden = folders.some((folder) => folder.id !== unsortedFolderId);
+}
+function renderFolderSpace() {
+  const folder = folders.find((item) => item.id === activeFolderId);
+  if (!folder) return;
+  const folderWords = words.filter((word) => word.folderId === folder.id);
+  $("#folder-space-title").textContent = folder.name;
+  $("#folder-space-subtitle").textContent = `${folderWords.length} ${folderWords.length === 1 ? "word" : "words"} in this folder`;
+  $("#folder-space-count").textContent = `${folderWords.length} ${folderWords.length === 1 ? "word" : "words"}`;
+  $("#folder-space-review-count").textContent = `${folderWords.filter((word) => !word.known).length} to review`;
+  const list = $("#folder-space-word-list");
+  list.replaceChildren();
+  folderWords.forEach((word) => {
+    const row = document.createElement("article");
+    row.className = "folder-word-row";
+    row.innerHTML = `<div class="folder-word-copy"><strong>${escapeHtml(displayChinese(word.term))}</strong><span>${escapeHtml(word.pronunciation || "Pinyin not saved")}</span><p>${escapeHtml(word.meaning || "Meaning not saved")}</p>${word.note ? `<small>${escapeHtml(word.note)}</small>` : ""}</div><div class="folder-word-actions"><button class="folder-word-detail" type="button">Study word</button><button class="folder-word-remove" type="button" aria-label="Remove ${escapeHtml(word.term)}">×</button></div>`;
+    row.querySelector(".folder-word-detail").onclick = () => { location.hash = `word-${encodeURIComponent(word.id)}`; };
+    row.querySelector(".folder-word-remove").onclick = () => {
+      words = words.filter((item) => item.id !== word.id);
+      save();
+      render();
+    };
+    list.append(row);
+  });
+  $("#folder-space-empty").hidden = folderWords.length > 0;
+  $("#folder-space-word-list").hidden = folderWords.length === 0;
+  $("#folder-space-coach").onclick = () => { location.hash = `folder-coach-${encodeURIComponent(folder.id)}`; };
+}
+function renderFolderCoach() {
+  const folder = folders.find((item) => item.id === activeFolderId);
+  if (!folder) return;
+  const folderWords = words.filter((word) => word.folderId === folder.id);
+  $("#folder-coach-title").textContent = `${folder.name} Hanji`;
+  $("#folder-coach-name").textContent = `${folder.name} Hanji`;
+  $("#folder-coach-folder-name").textContent = folder.name;
+  $("#folder-coach-word-count").textContent = folderWords.length;
+  const container = $("#folder-chat-messages");
+  container.replaceChildren();
+  if (!folderChatHistory.length) {
+    const welcome = document.createElement("div");
+    welcome.className = "chat-welcome";
+    welcome.innerHTML = `<span>✦</span><div><strong>Your ${escapeHtml(folder.name)} Hanji is ready.</strong><p>I’ll keep our practice focused on the words saved in this folder.</p></div>`;
+    container.append(welcome);
+  }
+  folderChatHistory.forEach((item) => {
+    const bubble = document.createElement("div");
+    bubble.className = `chat-message chat-${item.role}`;
+    bubble.innerHTML = `<span class="chat-label">${item.role === "user" ? "YOU" : escapeHtml(folder.name.toUpperCase()) + " HANJI"}</span><p>${escapeHtml(item.content).replace(/\\n/g, "<br>")}</p>`;
+    container.append(bubble);
+  });
+  container.scrollTop = container.scrollHeight;
+}
+async function sendFolderChatMessage(content) {
+  const folder = folders.find((item) => item.id === activeFolderId);
+  if (folderChatBusy || !folder || !content.trim()) return;
+  folderChatBusy = true;
+  const folderId = folder.id;
+  folderChatHistory.push({ role: "user", content: content.trim() });
+  folderChatHistory = folderChatHistory.slice(-12);
+  saveFolderChat(folderId);
+  renderFolderCoach();
+  const input = $("#folder-chat-input"), send = $("#folder-chat-form button");
+  input.value = "";
+  input.disabled = true;
+  send.disabled = true;
+  const loading = document.createElement("div");
+  loading.className = "chat-message chat-assistant chat-loading";
+  loading.innerHTML = `<span class="chat-label">${escapeHtml(folder.name.toUpperCase())} HANJI</span><p><i></i><i></i><i></i></p>`;
+  $("#folder-chat-messages").append(loading);
+  $("#folder-chat-messages").scrollTop = $("#folder-chat-messages").scrollHeight;
+  try {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: folderChatHistory, words: words.filter((word) => word.folderId === folderId), folderName: folder.name }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Folder Hanji is unavailable");
+    folderChatHistory.push({ role: "assistant", content: data.message });
+    folderChatHistory = folderChatHistory.slice(-12);
+    saveFolderChat(folderId);
+    touchStreak();
+  } catch (error) {
+    showToast(error.message || "Folder Hanji is unavailable.");
+  } finally {
+    folderChatBusy = false;
+    input.disabled = false;
+    send.disabled = false;
+    if (activeFolderId === folderId) renderFolderCoach();
+    input.focus();
+  }
+}
+function createFolder(name) {
+  const cleanName = name.trim();
+  if (!cleanName) return false;
+  if (folders.some((folder) => folder.name.toLocaleLowerCase() === cleanName.toLocaleLowerCase())) {
+    $("#folder-dialog-error").textContent = "A folder with this title already exists.";
+    return false;
+  }
+  const folder = { id: crypto.randomUUID(), name: cleanName };
+  folders.push(folder);
+  activeFolderId = folder.id;
+  selectedFolderId = folder.id;
+  selectStudyFolder(folder.id);
+  saveFolders();
+  save();
+  render();
+  location.hash = `folder-${encodeURIComponent(folder.id)}`;
+  showToast(`Created ${cleanName}. Your folder and dedicated Hanji are ready.`);
+  return true;
+}
 function renderFolderControls() {
   const folderList = $("#folder-list");
   folderList.replaceChildren();
-  const folderButtons = [
+  const folderCards = [
     { id: "all", name: "All words", count: words.length },
     ...folders.map((folder) => ({
       ...folder,
       count: words.filter((word) => word.folderId === folder.id).length,
     })),
   ];
-  folderButtons.forEach((folder) => {
+  folderCards.forEach((folder) => {
+    const card = document.createElement("div");
+    card.className = "folder-item";
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "folder-card";
+  button.className = "folder-card";
     button.classList.toggle("is-selected", selectedFolderId === folder.id);
     button.setAttribute("aria-pressed", String(selectedFolderId === folder.id));
     button.innerHTML = `<span class="folder-card-icon" aria-hidden="true">${folder.id === "all" ? "▦" : "▱"}</span><span class="folder-card-copy"><strong>${escapeHtml(folder.name)}</strong><small>${folder.count} ${folder.count === 1 ? "word" : "words"}</small></span>`;
     button.onclick = () => {
       selectedFolderId = folder.id;
+      selectedWordIds.clear();
+      selectStudyFolder(folder.id === "all" ? "all" : folder.id);
+      renderChat();
       render();
     };
-    folderList.append(button);
+    card.append(button);
+
+    if (folder.id !== "all" && folder.id !== unsortedFolderId) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "folder-delete-btn";
+      remove.textContent = "×";
+      remove.title = `Delete ${folder.name}`;
+      remove.setAttribute("aria-label", `Delete folder ${folder.name}`);
+      remove.onclick = () => deleteFolder(folder.id);
+      card.append(remove);
+    }
+    folderList.append(card);
   });
 
   const addFolderSelect = $("#add-folder-select");
-  const moveFolderOptions = `<option value="">Move to folder…</option>${folders
-    .map((folder) => `<option value="${escapeHtml(folder.id)}">${escapeHtml(folder.name)}</option>`)
-    .join("")}`;
   const previousAddFolderId = addFolderSelect.value;
   addFolderSelect.innerHTML = folders
     .map((folder) => `<option value="${escapeHtml(folder.id)}">${escapeHtml(folder.name)}</option>`)
     .join("");
   const nextAddFolderId = selectedFolderId !== "all"
     ? selectedFolderId
-    : previousAddFolderId;
+    : selectedStudyFolderId !== "all"
+      ? selectedStudyFolderId
+      : previousAddFolderId;
   if (folders.some((folder) => folder.id === nextAddFolderId)) {
     addFolderSelect.value = nextAddFolderId;
   }
-  document.querySelectorAll(".move-folder-select").forEach((select) => {
-    const currentFolderId = select.dataset.folderId;
-    select.innerHTML = moveFolderOptions;
-    select.value = "";
-    select.onchange = () => {
-      const word = words.find((item) => item.id === select.dataset.wordId);
-      if (!word || !select.value || select.value === word.folderId) return;
-      word.folderId = select.value;
-      save();
-      render();
-      showToast(`Moved to ${folderName(word.folderId)}.`);
-    };
-    select.title = `In ${folderName(currentFolderId)}`;
+
+  const studyFolderSelect = $("#study-folder-select");
+  studyFolderSelect.replaceChildren();
+  const studyFolders = [
+    { id: "all", name: "All folders" },
+    ...folders,
+  ];
+  studyFolders.forEach((folder) => {
+    const option = document.createElement("option");
+    option.value = folder.id;
+    option.textContent = folder.name;
+    studyFolderSelect.append(option);
   });
+  studyFolderSelect.value = selectedStudyFolderId;
+  $("#study-scope-count").textContent = `${studyWords().length} ${studyWords().length === 1 ? "word" : "words"}`;
+  $("#coach-word-count").textContent = studyWords().length;
+  $("#coach-folder-name").textContent = studyFolderName();
 }
+function setupMoveFolderSelect(select, word) {
+  const destinations = folders.filter((folder) => folder.id !== word.folderId);
+  select.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = destinations.length ? "Move to…" : "No other folders";
+  placeholder.selected = true;
+  select.append(placeholder);
+  destinations.forEach((folder) => {
+    const option = document.createElement("option");
+    option.value = folder.id;
+    option.textContent = folder.name;
+    select.append(option);
+  });
+  select.disabled = destinations.length === 0;
+  select.setAttribute("aria-label", `Move ${word.term} from ${folderName(word.folderId)} to another folder`);
+  select.title = destinations.length
+    ? `Move ${word.term} from ${folderName(word.folderId)}`
+    : "Create another folder before moving this word";
+  select.onchange = () => {
+    const folderId = select.value;
+    if (!folderId || !folders.some((folder) => folder.id === folderId)) return;
+    word.folderId = folderId;
+    save();
+    render();
+    showToast(`Moved ${word.term} to ${folderName(folderId)}.`);
+  };
+}
+
 function escapeHtml(value) {
   const div = document.createElement("div");
   div.textContent = value;
@@ -577,6 +828,20 @@ function render() {
   list.innerHTML = "";
   shown.forEach((word) => {
     const node = $("#word-template").content.firstElementChild.cloneNode(true);
+    node.classList.toggle("is-selected", selectedWordIds.has(word.id));
+    node.classList.toggle("is-selecting", selectMode);
+    const selectControl = node.querySelector(".word-select-control");
+    selectControl.hidden = !selectMode;
+    const selectCheckbox = node.querySelector(".word-select-checkbox");
+    selectCheckbox.dataset.wordId = word.id;
+    selectCheckbox.checked = selectedWordIds.has(word.id);
+    selectCheckbox.setAttribute("aria-label", `Select ${word.term}`);
+    selectCheckbox.onchange = () => {
+      if (selectCheckbox.checked) selectedWordIds.add(word.id);
+      else selectedWordIds.delete(word.id);
+      renderSelectionControls();
+      node.classList.toggle("is-selected", selectCheckbox.checked);
+    };
     node.querySelector(".term").textContent = displayChinese(word.term);
     const pronunciation = node.querySelector(".pronunciation");
     pronunciation.textContent = word.pronunciation;
@@ -592,6 +857,7 @@ function render() {
     const moveFolderSelect = node.querySelector(".move-folder-select");
     moveFolderSelect.dataset.wordId = word.id;
     moveFolderSelect.dataset.folderId = word.folderId;
+    setupMoveFolderSelect(moveFolderSelect, word);
     const aiBadge = node.querySelector(".ai-card-badge");
     if (word.sentences) aiBadge.hidden = false;
     const openWordButton = node.querySelector(".open-word-btn");
@@ -614,6 +880,7 @@ function render() {
     deleteButton.setAttribute("aria-label", `Remove ${word.term}`);
     deleteButton.onclick = () => {
       words = words.filter((w) => w.id !== word.id);
+      selectedWordIds.delete(word.id);
       save();
       cardIndex = 0;
       render();
@@ -633,8 +900,8 @@ function render() {
         word.partOfSpeech = item.partOfSpeech || word.partOfSpeech || "";
         word.sentences = item.sentences || null;
         save();
+        touchStreak();
         render();
-        awardXp(3);
       } catch {
         showToast("AI enrichment is unavailable right now.");
         button.disabled = false;
@@ -643,11 +910,25 @@ function render() {
     };
     list.append(node);
   });
+  const hasSelectedFolder = selectedFolderId !== "all";
+  const isFolderEmpty = hasSelectedFolder && folderWords.length === 0;
   $("#empty-state").hidden =
-    selectedFolderId !== "all" || words.length !== 0 || !!query || filter !== "all";
-  $("#folder-empty").hidden =
-    selectedFolderId === "all" || folderWords.length !== 0;
+    hasSelectedFolder || words.length !== 0 || !!query || filter !== "all";
+  $("#folder-empty").hidden = !isFolderEmpty;
+  if (isFolderEmpty) {
+    const folder = folders.find((item) => item.id === selectedFolderId);
+    const isUnsorted = selectedFolderId === unsortedFolderId;
+    $("#folder-empty-title").textContent = `${folder?.name || "This folder"} is empty.`;
+    $("#folder-empty-message").textContent = isUnsorted
+      ? "Words without a folder will appear here. Add words and choose Unsorted to save them here."
+      : `Add a new word list directly to ${folder?.name || "this folder"}, or move words here from another folder.`;
+  }
   renderFolderControls();
+  renderFoldersDashboard();
+  if (activeFolderId && $("#top").dataset.page === "folder-space") renderFolderSpace();
+  if (activeFolderId && $("#top").dataset.page === "folder-coach") renderFolderCoach();
+  renderSelectionControls();
+  $("#word-total-label").textContent = `${shown.length} ${shown.length === 1 ? "word" : "words"}`;
   $("#word-count").textContent = words.length;
   const percent = words.length
     ? Math.round((words.filter((w) => w.known).length / words.length) * 100)
@@ -660,9 +941,54 @@ function render() {
   renderQuiz();
   renderStudyLevels();
 }
+function selectedWords() {
+  return words.filter((word) => selectedWordIds.has(word.id));
+}
+function renderSelectionControls() {
+  const validSelectedIds = new Set(words.filter((word) => selectedWordIds.has(word.id)).map((word) => word.id));
+  selectedWordIds = validSelectedIds;
+  const shownIds = [...document.querySelectorAll(".word-select-checkbox")]
+    .map((checkbox) => checkbox.dataset.wordId)
+    .filter(Boolean);
+  const visibleSelected = shownIds.filter((id) => selectedWordIds.has(id));
+  const allVisibleSelected = shownIds.length > 0 && visibleSelected.length === shownIds.length;
+  const selectAll = $("#select-all-words");
+  selectAll.checked = allVisibleSelected;
+  selectAll.indeterminate = visibleSelected.length > 0 && !allVisibleSelected;
+  const targets = selectedWords();
+  const moveSelect = $("#bulk-move-select");
+  const previousDestination = moveSelect.value;
+  moveSelect.replaceChildren();
+  const movePlaceholder = document.createElement("option");
+  movePlaceholder.value = "";
+  movePlaceholder.textContent = targets.length ? "Move selected to…" : "Select words first…";
+  movePlaceholder.selected = true;
+  moveSelect.append(movePlaceholder);
+  folders
+    .filter((folder) => targets.some((word) => word.folderId !== folder.id))
+    .forEach((folder) => {
+      const option = document.createElement("option");
+      option.value = folder.id;
+      option.textContent = folder.name;
+      moveSelect.append(option);
+    });
+  if ([...moveSelect.options].some((option) => option.value === previousDestination)) {
+    moveSelect.value = previousDestination;
+  }
+  moveSelect.disabled = !targets.length || moveSelect.options.length < 2;
+  const selectionBar = $("#selection-toolbar");
+  selectionBar.hidden = !selectMode;
+  $("#toggle-select-mode").setAttribute("aria-pressed", String(selectMode));
+  $("#toggle-select-mode").textContent = selectMode ? "Done selecting" : "Select words";
+  $("#selection-count").textContent = `${selectedWordIds.size} selected`;
+  $("#bulk-edit-words").disabled = !selectedWordIds.size;
+  $("#bulk-enrich-words").disabled = !selectedWordIds.size;
+  $("#bulk-delete-words").disabled = !selectedWordIds.size;
+}
 function renderStudyLevels() {
   const board = $("#study-level-list");
   if (!board) return;
+  const scopedWords = studyWords();
   const levels = [
     ["new", "New / review", "Words you have not marked as confident yet."],
     ["learning", "Still learning", "Words that need another pass, but are starting to stick."],
@@ -672,7 +998,7 @@ function renderStudyLevels() {
   levels.forEach(([level, title, description]) => {
     const column = document.createElement("article");
     column.className = `level-column level-${level}`;
-    const items = words.filter((word) => studyLevel(word) === level);
+    const items = scopedWords.filter((word) => studyLevel(word) === level);
     column.innerHTML = `<div class="level-column-header"><div><span class="level-kicker">${level === "new" ? "01" : level === "learning" ? "02" : "03"}</span><h3>${title}</h3></div><strong>${items.length}</strong><p>${description}</p><div class="level-review-actions"><button class="level-review-btn" type="button" data-level="${level}" data-mode="study"${items.length ? "" : " disabled"}>Study cards</button><button class="level-review-btn" type="button" data-level="${level}" data-mode="reverse"${items.length ? "" : " disabled"}>Reverse recall</button></div></div>`;
     const list = document.createElement("div");
     list.className = "level-word-list";
@@ -706,9 +1032,10 @@ function renderStudyLevels() {
   });
 }
 function syncCardDeck() {
+  const scopedWords = studyWords();
   const eligibleWords = activeStudyLevel === "all"
-    ? words
-    : words.filter((word) => studyLevel(word) === activeStudyLevel);
+    ? scopedWords
+    : scopedWords.filter((word) => studyLevel(word) === activeStudyLevel);
   const validIds = new Set(eligibleWords.map((word) => word.id));
   cardDeck = cardDeck.filter((id) => validIds.has(id));
   eligibleWords.forEach((word) => {
@@ -736,6 +1063,7 @@ function renderCard() {
   if (!cardDeck.length) {
     area.hidden = true;
     empty.hidden = false;
+    empty.textContent = studyEmptyMessage("Add a few words above and your review deck will appear here.");
     count.textContent = "";
     return;
   }
@@ -763,6 +1091,7 @@ function renderReverseCard() {
   if (!cardDeck.length) {
     area.hidden = true;
     empty.hidden = false;
+    empty.textContent = studyEmptyMessage("Add a few words above and your reverse review deck will appear here.");
     count.textContent = "";
     return;
   }
@@ -786,16 +1115,18 @@ function renderQuiz() {
   const area = $("#quiz-area"),
     empty = $("#quiz-empty"),
     count = $("#quiz-count");
-  if (!words.length) {
+  quizWords = studyWords();
+  if (!quizWords.length) {
     area.hidden = true;
     empty.hidden = false;
+    empty.textContent = studyEmptyMessage("Add a few words above and your contextual quizzes will appear here.");
     count.textContent = "";
     return;
   }
   empty.hidden = true;
   area.hidden = false;
-  quizIndex = ((quizIndex % words.length) + words.length) % words.length;
-  const w = words[quizIndex],
+  quizIndex = ((quizIndex % quizWords.length) + quizWords.length) % quizWords.length;
+  const w = quizWords[quizIndex],
     fallback = [
       ["请根据已学词汇完成这个句子：我想用一个合适的中文词填入", "。"],
       ["结合上下文，选择最合适的词填入空格：", "。"],
@@ -838,17 +1169,29 @@ function renderQuiz() {
   pinyin.classList.toggle("pinyin-hidden", !quizShowPinyin || !sentencePinyin);
   $("#quiz-feedback").textContent = "";
   $("#quiz-feedback").classList.remove("incorrect");
-  count.textContent = `${quizIndex + 1} of ${words.length}`;
+  count.textContent = `${quizIndex + 1} of ${quizWords.length}`;
 }
 function openDialog() {
   $("#word-form").reset();
   $("#add-folder-select").value =
-    selectedFolderId === "all" ? unsortedFolderId : selectedFolderId;
+    selectedFolderId !== "all"
+      ? selectedFolderId
+      : selectedStudyFolderId !== "all"
+        ? selectedStudyFolderId
+        : unsortedFolderId;
   $("#lookup-status").textContent = "";
   $("#lookup-progress").hidden = true;
   $("#lookup-progress").value = 0;
   $("#word-dialog").showModal();
   setTimeout(() => $("#terms-input").focus(), 30);
+}
+function openFolderAddDialog() {
+  if (activeFolderId) {
+    selectedFolderId = activeFolderId;
+    $("#add-folder-select").value = activeFolderId;
+  }
+  openDialog();
+  if (activeFolderId) $("#add-folder-select").value = activeFolderId;
 }
 async function enrichWithAI(terms, force = false) {
   const uniqueTerms = [...new Set(terms)];
@@ -923,6 +1266,37 @@ $("#new-folder-btn").onclick = () => {
   form.hidden = false;
   $("#folder-name").focus();
 };
+function openFolderDialog() {
+  $("#folder-dialog-error").textContent = "";
+  $("#folder-form-dialog").reset();
+  $("#folder-dialog").showModal();
+  $("#folder-dialog-name").focus();
+}
+$("#dashboard-new-folder").onclick = openFolderDialog;
+$("#dashboard-empty-create").onclick = openFolderDialog;
+$("#folder-dialog-close").onclick = () => $("#folder-dialog").close();
+$("#folder-dialog-cancel").onclick = () => $("#folder-dialog").close();
+$("#folder-form-dialog").addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (createFolder($("#folder-dialog-name").value)) $("#folder-dialog").close();
+});
+$("#folder-back-to-dashboard").onclick = () => { location.hash = "folders"; };
+$("#folder-space-add").onclick = () => openFolderAddDialog();
+$("#folder-space-empty-add").onclick = () => openFolderAddDialog();
+$("#folder-coach-back").onclick = () => { location.hash = `folder-${encodeURIComponent(activeFolderId)}`; };
+$("#folder-chat-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  sendFolderChatMessage($("#folder-chat-input").value);
+});
+document.querySelectorAll("[data-folder-prompt]").forEach((button) => {
+  button.onclick = () => sendFolderChatMessage(button.dataset.folderPrompt);
+});
+$("#clear-folder-chat-btn").onclick = () => {
+  if (!activeFolderId) return;
+  folderChatHistory = [];
+  saveFolderChat(activeFolderId);
+  renderFolderCoach();
+};
 $("#cancel-folder-btn").onclick = () => {
   $("#folder-form").reset();
   $("#folder-form").hidden = true;
@@ -939,11 +1313,14 @@ $("#folder-form").addEventListener("submit", (event) => {
   const folder = { id: crypto.randomUUID(), name };
   folders.push(folder);
   selectedFolderId = folder.id;
+  selectStudyFolder(folder.id);
+  renderChat();
   saveFolders();
   $("#folder-form").reset();
   $("#folder-form").hidden = true;
   render();
-  showToast(`Created ${name}. Add a word list to get started.`);
+  location.hash = `folder-${encodeURIComponent(folder.id)}`;
+  showToast(`Created ${name}. Your folder and dedicated Hanji are ready.`);
 });
 $("#cancel-btn").onclick = () => $("#word-dialog").close();
 $("#dialog-close").onclick = () => $("#word-dialog").close();
@@ -965,7 +1342,8 @@ $("#detail-regenerate").onclick = async () => {
     Object.assign(word, { meaning: item.meaning, pronunciation: localPinyin(word.term) || item.pinyin || item.pronunciation || "", partOfSpeech: item.partOfSpeech || "", sentences: item.sentences || null });
     save();
     renderWordDetail();
-    showToast("AI study room refreshed.", "xp");
+    touchStreak();
+    showToast("AI study room refreshed.");
   } catch (error) {
     showToast(error.message || "AI enrichment is unavailable.");
   } finally {
@@ -1033,8 +1411,8 @@ $("#word-form").addEventListener("submit", async (e) => {
   }
   words = [...added, ...words];
   save();
+  touchStreak();
   progress.value = 100;
-  awardXp(Math.max(5, terms.length * 2));
   $("#word-dialog").close();
   submit.disabled = false;
   cardIndex = 0;
@@ -1042,8 +1420,142 @@ $("#word-form").addEventListener("submit", async (e) => {
 });
 $("#pinyin-toggle").checked = showPinyin;
 $("#script-toggle").checked = useTraditional;
-$("#search-input").oninput = render;
-$("#filter-select").onchange = render;
+$("#search-input").oninput = () => {
+  selectedWordIds.clear();
+  render();
+};
+$("#filter-select").onchange = () => {
+  selectedWordIds.clear();
+  render();
+};
+$("#toggle-select-mode").onclick = () => {
+  selectMode = !selectMode;
+  selectedWordIds.clear();
+  render();
+};
+$("#select-all-words").onchange = (event) => {
+  document.querySelectorAll(".word-select-checkbox").forEach((checkbox) => {
+    if (event.target.checked) selectedWordIds.add(checkbox.dataset.wordId);
+    else selectedWordIds.delete(checkbox.dataset.wordId);
+    checkbox.checked = event.target.checked;
+    checkbox.closest(".word-card")?.classList.toggle("is-selected", event.target.checked);
+  });
+  renderSelectionControls();
+};
+$("#deselect-all-words").onclick = () => {
+  selectedWordIds.clear();
+  render();
+};
+$("#bulk-add-words").onclick = () => openDialog();
+$("#bulk-move-select").onchange = (event) => {
+  const folderId = event.target.value;
+  const targets = selectedWords();
+  if (!folderId || !targets.length) return;
+  const count = targets.length;
+  targets.forEach((word) => { word.folderId = folderId; });
+  save();
+  selectedWordIds.clear();
+  render();
+  showToast(`Moved ${count} ${count === 1 ? "word" : "words"} to ${folderName(folderId)}.`);
+};
+$("#bulk-delete-words").onclick = () => {
+  const targets = selectedWords();
+  if (!targets.length) return;
+  if (!window.confirm(`Remove ${targets.length} selected ${targets.length === 1 ? "word" : "words"}? This cannot be undone.`)) return;
+  const count = targets.length;
+  const removedIds = new Set(targets.map((word) => word.id));
+  words = words.filter((word) => !removedIds.has(word.id));
+  selectedWordIds.clear();
+  cardDeck = cardDeck.filter((id) => !removedIds.has(id));
+  save();
+  render();
+  showToast(`Removed ${count} ${count === 1 ? "word" : "words"}.`);
+};
+$("#bulk-edit-words").onclick = openBulkEdit;
+$("#edit-words-close").onclick = () => $("#edit-words-dialog").close();
+$("#cancel-edit-words").onclick = () => $("#edit-words-dialog").close();
+$("#edit-words-form").addEventListener("submit", saveBulkEdit);
+$("#bulk-enrich-words").onclick = enrichSelectedWords;
+$("#study-folder-select").onchange = (event) => {
+  selectStudyFolder(event.target.value);
+  renderChat();
+  render();
+};
+function openBulkEdit() {
+  const selected = selectedWords();
+  if (!selected.length) return;
+  const list = $("#bulk-edit-list");
+  list.replaceChildren();
+  selected.forEach((word) => {
+    const row = document.createElement("fieldset");
+    row.className = "bulk-edit-word";
+    const legend = document.createElement("legend");
+    legend.textContent = `${displayChinese(word.term)} · ${word.meaning || "No meaning"}`;
+    row.append(legend);
+    [
+      ["term", "Word", word.term],
+      ["pronunciation", "Pronunciation", word.pronunciation || ""],
+      ["meaning", "Meaning", word.meaning || ""],
+      ["note", "Note", word.note || ""],
+    ].forEach(([field, labelText, value]) => {
+      const label = document.createElement("label");
+      label.textContent = labelText;
+      const input = document.createElement(field === "note" || field === "meaning" ? "textarea" : "input");
+      input.value = value;
+      input.dataset.wordId = word.id;
+      input.dataset.field = field;
+      input.setAttribute("aria-label", `${labelText} for ${word.term}`);
+      label.append(input);
+      row.append(label);
+    });
+    list.append(row);
+  });
+  $("#edit-words-dialog").showModal();
+}
+function saveBulkEdit(event) {
+  event.preventDefault();
+  const count = selectedWords().length;
+  const updates = [...$("#bulk-edit-list").querySelectorAll("[data-word-id][data-field]")];
+  updates.forEach((input) => {
+    const word = words.find((item) => item.id === input.dataset.wordId);
+    if (word) word[input.dataset.field] = input.value.trim();
+  });
+  save();
+  $("#edit-words-dialog").close();
+  render();
+  showToast(`Updated ${count} ${count === 1 ? "word" : "words"}.`);
+}
+async function enrichSelectedWords() {
+  const targets = selectedWords();
+  if (!targets.length) return;
+  const button = $("#bulk-enrich-words");
+  button.disabled = true;
+  button.textContent = "Enriching…";
+  try {
+    const results = await enrichWithAI(targets.map((word) => word.term), true);
+    let enriched = 0;
+    targets.forEach((word, index) => {
+      const item = results[index];
+      if (!item?.meaning) return;
+      word.meaning = item.meaning;
+      word.pronunciation = localPinyin(word.term) || item.pinyin || item.pronunciation || word.pronunciation || "";
+      word.partOfSpeech = item.partOfSpeech || word.partOfSpeech || "";
+      word.sentences = item.sentences || word.sentences || null;
+      enriched++;
+    });
+    if (!enriched) throw new Error("AI returned no study data for the selected words.");
+    save();
+    touchStreak();
+    render();
+    showToast(`AI enriched ${enriched} ${enriched === 1 ? "word" : "words"}.`);
+  } catch (error) {
+    showToast(error.message || "AI enrichment is unavailable.");
+  } finally {
+    button.disabled = !selectedWordIds.size;
+    button.textContent = "✦ AI enrich";
+    renderSelectionControls();
+  }
+}
 function generateMissingPinyin() {
   const missing = words.filter(
     (word) => !word.pronunciation && /[\u3400-\u9fff]/.test(word.term),
@@ -1059,7 +1571,8 @@ function generateMissingPinyin() {
   if (!generated) return;
   save();
   render();
-  showToast(`Pinyin saved for ${generated} word${generated === 1 ? "" : "s"}.`, "xp");
+  touchStreak();
+  showToast(`Pinyin saved for ${generated} word${generated === 1 ? "" : "s"}.`);
 }
 $("#pinyin-toggle").onchange = async (e) => {
   showPinyin = e.target.checked;
@@ -1103,7 +1616,7 @@ $("#learning-btn").onclick = () => {
 $("#known-btn").onclick = () => {
   const word = cardAt(cardIndex);
   if (word) setStudyLevel(word, "known");
-  awardXp(5);
+  touchStreak();
   save();
   cardIndex++;
   render();
@@ -1127,18 +1640,18 @@ $("#reverse-learning-btn").onclick = () => {
 $("#reverse-known-btn").onclick = () => {
   const word = cardAt(cardIndex);
   if (word) setStudyLevel(word, "known");
-  awardXp(5);
+  touchStreak();
   save();
   cardIndex++;
   render();
 };
 $("#check-answer-btn").onclick = () => {
   const answer = $("#quiz-answer").value.trim().replaceAll(" ", ""),
-    correct = displayChinese(words[quizIndex]?.term || "").replaceAll(" ", ""),
+    correct = displayChinese(quizWords[quizIndex]?.term || "").replaceAll(" ", ""),
     feedback = $("#quiz-feedback");
   if (answer && answer === correct) {
     feedback.textContent = "Correct — nice recall.";
-    awardXp(10);
+    touchStreak();
     feedback.classList.remove("incorrect");
   } else {
     feedback.textContent = answer
@@ -1152,7 +1665,7 @@ $("#quiz-answer").addEventListener("keydown", (e) => {
 });
 $("#reveal-answer-btn").onclick = () => {
   const feedback = $("#quiz-feedback");
-  feedback.textContent = `Answer: ${displayChinese(words[quizIndex]?.term || "")}`;
+  feedback.textContent = `Answer: ${displayChinese(quizWords[quizIndex]?.term || "")}`;
   feedback.classList.remove("incorrect");
 };
 $("#new-sentence-btn").onclick = () => {
@@ -1196,6 +1709,9 @@ $("#clear-chat-btn").onclick = () => {
 };
 const pageConfig = {
   library: ["PERSONAL LANGUAGE STUDIO", "Words worth keeping."],
+  folders: ["YOUR WORD SETS", "My folders"],
+  "folder-space": ["YOUR FOLDER WORKSPACE", "Folder"],
+  "folder-coach": ["PRIVATE FOLDER PRACTICE", "Hanji"],
   study: ["A QUIET MOMENT TO PRACTICE", "Study cards"],
   "reverse-study": ["RECALL FROM THE CLUE", "Reverse recall"],
   "context-quiz": ["READ THE CONTEXT, FIND THE WORD", "Context quiz"],
@@ -1209,15 +1725,38 @@ function setPage(page) {
   $("#top").dataset.page = nextPage;
   $("#page-eyebrow").textContent = pageConfig[nextPage][0];
   $("#page-title").textContent = pageConfig[nextPage][1];
-  const activeNav = nextPage === "word-detail" ? "#library" : `#${nextPage}`;
+  const activeNav = nextPage === "word-detail" || nextPage === "folder-space" || nextPage === "folder-coach"
+    ? "#folders"
+    : nextPage === "folders" ? "#folders" : `#${nextPage}`;
   document.querySelectorAll(".nav-link").forEach((link) => {
     link.classList.toggle("active", link.getAttribute("href") === activeNav);
   });
+  $("#study-scope-bar").hidden =
+    nextPage === "library" || nextPage === "folders" || nextPage === "folder-space" || nextPage === "folder-coach" || nextPage === "word-detail" || nextPage === "pinyin-reader";
   if (nextPage === "word-detail") renderWordDetail();
+  if (nextPage === "folders") renderFoldersDashboard();
+  if (nextPage === "folder-space") renderFolderSpace();
+  if (nextPage === "folder-coach") renderFolderCoach();
   if (nextPage === "study-levels") renderStudyLevels();
 }
 function pageFromHash() {
   const hash = location.hash.slice(1);
+  if (hash.startsWith("folder-coach-")) {
+    const folderId = decodeURIComponent(hash.slice("folder-coach-".length));
+    if (folders.some((folder) => folder.id === folderId)) {
+      activeFolderId = folderId;
+      loadFolderChat(folderId);
+      return setPage("folder-coach");
+    }
+  }
+  if (hash.startsWith("folder-")) {
+    const folderId = decodeURIComponent(hash.slice("folder-".length));
+    if (folders.some((folder) => folder.id === folderId)) {
+      activeFolderId = folderId;
+      loadFolderChat(folderId);
+      return setPage("folder-space");
+    }
+  }
   if (hash.startsWith("word-")) {
     activeDetailId = decodeURIComponent(hash.slice(5));
     if (words.some((word) => word.id === activeDetailId)) return setPage("word-detail");
@@ -1243,6 +1782,7 @@ function setupSectionReveal() {
   sections.forEach((section) => observer.observe(section));
 }
 window.addEventListener("hashchange", pageFromHash);
+saveStats();
 save();
 saveFolders();
 render();
